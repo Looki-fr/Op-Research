@@ -70,7 +70,7 @@ def find_last_edge_to_fill(allocations, supply, demand):
                 return (i, j)
     return None
 
-def balas_hammer_algorithm(transportation_table, print_table):
+def balas_hammer_algorithm(transportation_table):
     num_sources = len(transportation_table) - 1
     num_destinations = len(transportation_table[0]) - 1
     
