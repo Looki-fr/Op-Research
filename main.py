@@ -2,6 +2,7 @@ from utils_functions import *
 from algorithms.balas_hammer import balas_hammer_algorithm
 from algorithms.north_west import north_west_corner_method
 from algorithms.stepping_stone_enhanced import stepping_stone_method
+from algorithms.total_cost import get_total_cost
 
 def main():
     transportation_table = [
@@ -20,6 +21,7 @@ def main():
     print_transportation_table(transportation_table)
     allocations = balas_hammer_algorithm(transportation_table, print_table)
     print_table(allocations)
+    print("Total cost: ", get_total_cost(transportation_table, allocations))
     
     # allocations = north_west_corner_method(transportation_table)
     # print_table(allocations)
