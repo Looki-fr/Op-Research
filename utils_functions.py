@@ -10,14 +10,19 @@ def print_transportation_table(array):
     printing_table.insert(0,[""])
     for i in range(len(array[0])-1):
         printing_table[0].append(f"C{i+1}")
-    printing_table[0].append("order")
+    printing_table[0].append("provisions")
     printing_table[-1].insert(0, "order")
     printing_table[-1].append("")
+    print_table(printing_table)
+
+def print_table(printing_table):
     column_widths = [max(len(str(item)) for item in column) for column in zip(*printing_table)]
     print("+" + "+".join("-" * (width + 2) for width in column_widths) + "+")
     for row in printing_table:
         print("|", end=" ")
         for i, item in enumerate(row):
+            if i > len(column_widths)-1:
+                break
             print(f"{item: <{column_widths[i]}}", end=" | ")  
         print()  
         print("+" + "+".join("-" * (width + 2) for width in column_widths) + "+")
