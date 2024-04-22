@@ -1,7 +1,6 @@
 from utils_functions import *
 from algorithms.balas_hammer import balas_hammer_algorithm
 from algorithms.north_west import north_west_corner_method
-from algorithms.stepping_stone_final import stepping_stone
 from problem import Problem
 
 def main():
