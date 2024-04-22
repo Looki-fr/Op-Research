@@ -1,7 +1,7 @@
 
 def calculate_penalties(costs, supply, demand):
     penalties = []
-    for i in range(len(costs)):
+    for i in range(len(supply)):
             
         if supply[i] > 0:
             row_costs = costs[i][:]
@@ -11,6 +11,7 @@ def calculate_penalties(costs, supply, demand):
 
                 penalties.append(((i), penalty, "row"))
 
+    for i in range(len(demand)):
         if demand[i] > 0:
             column_costs = [costs[x][i] for x in range(len(costs))]
             column_costs.sort()
@@ -70,22 +71,14 @@ def find_last_edge_to_fill(allocations, supply, demand):
                 return (i, j)
     return None
 
-def balas_hammer_algorithm(transportation_table):
-    num_sources = len(transportation_table) - 1
-    num_destinations = len(transportation_table[0]) - 1
-    
-    supply = [int(transportation_table[i][-1]) for i in range(num_sources)]
-    demand = [int(transportation_table[-1][j]) for j in range(num_destinations)]
-    costs = [[int(transportation_table[i][j]) for j in range(num_destinations)] for i in range(num_sources)]
-    
-    allocations = [[0] * num_destinations for _ in range(num_sources)]
-    
+def balas_hammer_algorithm(problem):
+    temp_costs=[row[:] for row in problem.costs]
+   
     while True:
         edge_to_fill=None
-        penalties = calculate_penalties(costs, supply, demand)
-
+        penalties = calculate_penalties(temp_costs, problem.supply, problem.demand)
         if not penalties:
-            edge_to_fill = find_last_edge_to_fill(allocations, supply, demand)
+            edge_to_fill = find_last_edge_to_fill(problem.allocations, problem.supply, problem.demand)
             if edge_to_fill is None:
                 print("no more penalties")
                 print("no more edges to fill")
@@ -93,12 +86,10 @@ def balas_hammer_algorithm(transportation_table):
         
         
         if edge_to_fill == None:
-            edge_to_fill = choose_edge_to_fill(penalties, costs, allocations, supply, demand)
+            edge_to_fill = choose_edge_to_fill(penalties, temp_costs, problem.allocations, problem.supply, problem.demand)
 
         if edge_to_fill is None:
             print("no more edges to fill")
             break
         
-        fill_edge(allocations, edge_to_fill, supply, demand, costs)
-    
-    return allocations
+        fill_edge(problem.allocations, edge_to_fill, problem.supply, problem.demand, temp_costs)
