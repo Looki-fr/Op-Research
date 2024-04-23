@@ -1,3 +1,4 @@
+from hmac import new
 from io import TextIOWrapper
 from tabulate import tabulate
 from typing import Union
@@ -99,11 +100,11 @@ class Matrix():
         return [cell for row in self.matrix for cell in row]
 
     @property
-    def rows(self):
+    def rows(self) -> list[list[Union[int, float]]]:
         return [row for row in self.matrix]
 
     @property
-    def cols(self):
+    def cols(self) -> list[list[Union[int, float]]]:
         return [[row[i] for row in self.matrix] for i in range(self.cols_size)]
 
     def __len__(self):
@@ -241,7 +242,7 @@ class TransportationTable:
                 matrix[Index(i, j)] = cell
         # last line is the demand
         table.demand = list(map(int, file.readline().split(" ")))
-        if len(table.demand) != rows:
+        if len(table.demand) != cols:
             raise BadFormat("The demand is not well formatted")
         if sum(table.supply) != sum(table.demand):
             raise ValueError("The supply and demand are not equal")
@@ -276,10 +277,11 @@ class TransportationTable:
             table.append(row + [rows[i]])
         # add the demand
         table.append(cols)
+        print(table)
         # headers
-        headers = [f"C_{i}" for i in range(len(self.supply))] + ["Provitions"]
+        headers = [f"C_{i}" for i in range(len(self.demand))] + ["Provitions"]
         # index
-        index = [f"P_{i}" for i in range(len(self.demand))] + ["Orders"]
+        index = [f"P_{i}" for i in range(len(self.supply))] + ["Orders"]
         print(tabulate(table, tablefmt="fancy_grid", showindex=index, headers=headers))
 
     def NorthWestCorner(self) -> None:
@@ -300,37 +302,55 @@ class TransportationTable:
                 j += 1
         self.transportation_table = matrix
 
-    def potentials(self) -> tuple[list[int], list[int]]:
-        size = len(self.supply) + len(self.demand)
-        # check that there is enough values in the transportation table
-        # if sum([1 for cell in self.transportation_table.flatten() if cell != 0]) < size - 1:
-        #     raise ValueError("The transportation table is not well formatted")
-        # potentials are binds by the following equation
-        #  c_ij = s_i - t_j
-        s = [None] * len(self.supply)
-        t = [None] * len(self.demand)
-        # make the system of equations matrix to solve
-        matrix = Matrix(size, size)
+    def get_transportation_indexes(self) -> list[Index]:
         # list the indexes where the values are not null in the transportation table
         indexes: list[Index] = []
         for i, row in enumerate(self.transportation_table.rows):
             for j, cell in enumerate(row):
                 if cell != 0:
                     indexes.append(Index(i, j))
+        else:
+            # if the number of indexes is less than the (size of the matrix - 1) then we must add some constraints
+            # to do that we must link cell which are alone in both their row and column
+            for j in indexes.copy():
+                # check if the cell is alone in its row and column regarding the other cells
+                if sum([1 for index in indexes if index.row == j.row]) == 1 and sum([1 for index in indexes if index.col == j.col]) == 1:
+                    # if the cell is alone in its row and column then link it to the smallest cost cell in the same row or column which is not the cell itself
+                    row = self.costs.rows[j.row]
+                    col = self.costs.cols[j.col]
+                    val = max(row + col)
+                    for k, (rcell, ccell) in enumerate(zip(row, col)):
+                        if k != j.col and ccell < val:
+                            val = ccell
+                            new_index = Index(j.row, k)
+                        if k != j.row and rcell < val:
+                            val = rcell
+                            new_index = Index(k, j.col)
+                    if new_index not in indexes:
+                        indexes.append(new_index)
+                    else:
+                        raise ValueError("Error in the new indexes allocation")
+        return indexes
+
+    def potentials(self) -> tuple[list[int], list[int]]:
+        size = len(self.supply) + len(self.demand)
+        # potentials are binds by the following equation
+        #  c_ij = s_i - t_j
+        s = [None] * len(self.supply)
+        t = [None] * len(self.demand)
+        # make the system of equations matrix to solve
+        matrix = Matrix(size, size)
+        indexes = self.get_transportation_indexes()
         # fill the matrix
         for i, index in enumerate(indexes):
             matrix[Index(i, index.row)] = 1
             matrix[Index(i, len(self.supply) + index.col)] = -1
         else:
-            # fill the row of the matrix until the end
-            for i in range(len(indexes), size):
-                matrix[Index(i, i)] = 1
+            # init one of the potentials to 0
+            matrix[Index(size - 1, 0)] = 1
         # create the vector of costs
         costs = [self.costs[index] for index in indexes]
         costs.append(0)
-        # while cost is smaller than the number of variables
-        while len(costs) < size:
-            costs.append(0)
         res = linalg.solve(matrix.matrix, costs)
         # assign the values to the potentials
         s = [*map(int, res[:len(self.supply)])]
@@ -408,12 +428,11 @@ class TransportationTable:
 
     def get_graph(self) -> 'Graph':
         graph = Graph()
-        for i, row in enumerate(self.transportation_table.rows):
-            for j, cell in enumerate(row):
-                if cell != 0:
-                    graph.states.append(State(f"P_{i}", cell))
-                    graph.states.append(State(f"O_{j}", cell))
-                    graph.edges[State(f"P_{i}", cell)] = State(f"O_{j}", cell)
+        indexes = self.get_transportation_indexes()
+        for i, index in enumerate(indexes):
+            graph.states.append(State(f"P_{index.row}", self.supply[index.row]))
+            graph.states.append(State(f"O_{index.col}", self.demand[index.col]))
+            graph.edges.append((State(f"P_{index.row}", self.supply[index.row]), State(f"O_{index.col}", self.demand[index.col]), self.transportation_table[index]))
         return graph
 
 
@@ -421,10 +440,10 @@ class Graph:
 
     def __init__(self) -> None:
         self.states: list[State] = []
-        self.edges: dict[State:State] = {}
+        self.edges: list[tuple[State]] = []
 
     def __str__(self) -> str:
-        return f"States : {self.states}\nEdges : {self.edges}"
+        return f"States : {self.states}\nEdges : {[f'{state.name} -> {next_state.name}' for state, next_state, _ in self.edges]}"
 
     def __repr__(self) -> str:
         return f"Graph {id(self)}"
@@ -436,8 +455,8 @@ class Graph:
         graph = gv.Digraph()
         for state in self.states:
             graph.node(state.name, label=str(state))
-        for state, next_state in self.edges.items():
-            graph.edge(state.name, next_state.name)
+        for state, next_state, value in self.edges:
+            graph.edge(state.name, next_state.name, label=str(value))
         graph.view(cleanup=True)
 
 
@@ -464,7 +483,7 @@ class State:
 
 
 if __name__ == "__main__":
-    with open("data/1.txt", "r") as f:
+    with open("data/6.txt", "r") as f:
         table = TransportationTable.from_file(f)
     print("Costs matrix :")
     table.show(table.costs)

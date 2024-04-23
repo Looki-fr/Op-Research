@@ -3,3 +3,4 @@ inquirerpy==0.3.4
 art==6.1
 pathlib==1.0.1
 matplotlib==3.8.4
+graphviz==0.20.3
