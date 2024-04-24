@@ -464,7 +464,7 @@ class Graph:
         graph.view(cleanup=True)
 
     def is_degenerate(self) -> bool:
-        return len(self.edges) != len(self.states) - 1 or self.has_cycle()
+        return len(self.edges) < len(self.states) - 1 or bool(self.has_cycle())
 
     def has_cycle(self) -> Union[list['State'], bool]:
         # Check if there is a cycle in the graph
