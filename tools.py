@@ -1,7 +1,9 @@
+from calendar import c
 from hmac import new
 from io import TextIOWrapper
 from math import e
 from operator import ne
+from xmlrpc.client import Boolean
 from tabulate import tabulate
 from typing import Union
 from logger import print
@@ -279,7 +281,6 @@ class TransportationTable:
             table.append(row + [rows[i]])
         # add the demand
         table.append(cols)
-        print(table)
         # headers
         headers = [f"C_{i}" for i in range(len(self.demand))] + ["Provitions"]
         # index
@@ -436,15 +437,54 @@ class TransportationTable:
             o = State(f"O_{index.col}", self.demand[index.col])
             graph.states.add(p)
             graph.states.add(o)
-            graph.edges.append((p, o, self.transportation_table[index]))
+            graph.edges.append(Edge(p, o, self.transportation_table[index], index))
         return graph
+
+    def optimize(self) -> bool:
+        # check if we can optimize the transportation table
+        first = True
+        while True:
+            marginal_costs = self.marginal_costs
+            min_mcost = min(marginal_costs)
+            if min_mcost >= 0:
+                if first:
+                    print("The transportation table is already optimized")
+                    return False
+                # if the minimum marginal cost is positive or null then we can't optimize the table anymore
+                break
+            # find the index of the minimum marginal cost
+            index = marginal_costs.index(min_mcost)
+            # get the graph
+            graph = self.get_graph()
+            # add the edge to the graph
+            state = State(f"P_{index.row}", self.supply[index.row])
+            next_state = State(f"O_{index.col}", self.demand[index.col])
+            graph.edges.append(Edge(state, next_state, 0, index))
+            # find the cycle
+            cycle: list[Edge] = graph.has_cycle()
+            # shift the cycle until the edge we added is the first one
+            while cycle[0].matrix_index != index:
+                cycle.append(cycle.pop(0))
+            # find the minimum delta
+            min_value = min([self.transportation_table[edge.matrix_index] for edge in cycle if cycle.index(edge) % 2 == 1])
+            # apply the cycle
+            for i, edge in enumerate(cycle):
+                if i % 2 == 0:
+                    self.transportation_table[edge.matrix_index] += min_value
+                else:
+                    self.transportation_table[edge.matrix_index] -= min_value
+            first = False
+        return True
+
+    def get_total_cost(self) -> int:
+        return sum([self.costs[index] * self.transportation_table[index] for index in self.get_transportation_indexes()])
 
 
 class Graph:
 
     def __init__(self) -> None:
         self.states: set[State] = set()
-        self.edges: list[tuple[State, State, int]] = []
+        self.edges: list[Edge] = []
 
     def __str__(self) -> str:
         return f"States : {self.states}\nEdges : {[f'{state.name} -> {next_state.name}' for state, next_state, _ in self.edges]}"
@@ -466,7 +506,7 @@ class Graph:
     def is_degenerate(self) -> bool:
         return len(self.edges) < len(self.states) - 1 or bool(self.has_cycle())
 
-    def has_cycle(self) -> Union[list['State'], bool]:
+    def has_cycle(self) -> Union[list['Edge'], bool]:
         # Check if there is a cycle in the graph
         # edges aren't directed when checking for cycles
         visited = set()
@@ -475,21 +515,35 @@ class Graph:
         def dfs(state, parent):
             visited.add(state)
             recursion_stack.append(state)
-
+            # ? get the edges linked to the current state and the reversed edges
             edges = [edge for edge in self.edges if edge[0] == state]
-            edges += [(edge[1], edge[0], edge[2]) for edge in self.edges if edge[1] == state]
+            edges += [edge.reversed() for edge in self.edges if edge[1] == state]
             for _, next_state, _ in edges:
-                if next_state == state or parent is not None and next_state == parent:
+                # check if the next state is the parent of the current state and we are just going back with previous edge
+                # ? only work since a state can't be linked to itself in any case
+                if parent is not None and next_state == parent:
                     continue
+                # check if the next state has already been visited, if not visit it
                 if next_state not in visited:
                     path = dfs(next_state, state)
                     if path:
                         return path
+                # check if the next state is in the recursion stack
                 elif next_state in recursion_stack:
-                    # clear the beginning of the recursion stack until the first occurence of the next state
+                    # clear the beginning of the recursion stack until the first occurence of the next state so we get the cycle
                     while recursion_stack[0] != next_state and len(recursion_stack) > 0:
                         recursion_stack.pop(0)
-                    return recursion_stack
+                    # translate the list of states to a list of edges
+                    cycle = []
+                    possible_edge = self.edges + [edge.reversed() for edge in self.edges]
+                    # ? get original edges and not generated ones to retrieve the indexes
+                    for i in range(len(recursion_stack)):
+                        # get the edge between the current state and the next state in the recursion stack
+                        for edge in possible_edge:
+                            if edge[0] == recursion_stack[i] and edge[1] == recursion_stack[(i + 1) % len(recursion_stack)]:
+                                cycle.append(edge)
+                                break
+                    return cycle
             recursion_stack.remove(state)
             return False
 
@@ -523,40 +577,53 @@ class State:
         return hash((self.name, self.weight))
 
 
+class Edge(tuple[State, State, int]):
+    def __init__(self, state: State, next_state: State, value: int, index: Index) -> None:
+        super().__init__()
+        self.state = state
+        self.next_state = next_state
+        self.value = value
+        self.matrix_index = index
+
+    def __new__(cls, state: State, next_state: State, value: int, index: Index):
+        return super().__new__(cls, (state, next_state, value))
+
+    def __str__(self) -> str:
+        return f"{self.state} -> {self.next_state} ({self.value})"
+
+    def __repr__(self) -> str:
+        return f"Edge({self.state}, {self.next_state}, {self.value})"
+
+    def reversed(self) -> 'Edge':
+        return Edge(self.next_state, self.state, self.value, self.matrix_index)
+
+    def __eq__(self, value: object) -> bool:
+        return self.state == value.state and self.next_state == value.next_state and self.value == value.value
+
+    def __ne__(self, value: object) -> bool:
+        return not self.__eq__(value)
+
+    def __hash__(self) -> int:
+        return hash((self.state, self.next_state, self.value))
+
+
 if __name__ == "__main__":
-    with open("data/6.txt", "r") as f:
+    with open("data/4.txt", "r") as f:
         table = TransportationTable.from_file(f)
     print("Costs matrix :")
     table.show(table.costs)
+    print("NorthWestCorner algorithm :")
     table.NorthWestCorner()
-    print("Transportation table :")
     table.show(table.transportation_table)
-    potentials = table.potentials()
-    print("Marginal costs :")
-    table.show(table.marginal_costs, potentials[0], potentials[1])
+    print("Total cost : ", table.get_total_cost())
     min_mcost = min(table.marginal_costs)
     print(f"Minimum marginal cost is {min_mcost} at {table.marginal_costs.index(min_mcost)}")
-    table.BalasHammer()
     print("Balas-Hammer algorithm :")
+    table.BalasHammer()
     table.show(table.transportation_table)
-    potentials = table.potentials()
-    print("Marginal costs :")
-    table.show(table.marginal_costs, potentials[0], potentials[1])
-    min_mcost = min(table.marginal_costs)
-    print(f"Minimum marginal cost is {min_mcost} at {table.marginal_costs.index(min_mcost)}")
-    graph = table.get_graph()
-    print("Graph :")
-    print(graph)
-    graph.display()
-    print(f"Is the graph degenerate ? {graph.is_degenerate()}")
-    print(f"Does the graph have a cycle ? {graph.has_cycle()}")
-    # wait for the user to continue
-    input("Press any key to continue...")
-    # add a cycle by adding an edge with the marginal cost
-    index = table.marginal_costs.index(min_mcost)
-    state = State(f"P_{index.row}", table.supply[index.row])
-    next_state = State(f"O_{index.col}", table.demand[index.col])
-    graph.edges.append((state, next_state, 0))
-    graph.display()
-    print(f"Is the graph degenerate ? {graph.is_degenerate()}")
-    print(f"Does the graph have a cycle ? {graph.has_cycle()}")
+    print("Total cost : ", table.get_total_cost())
+    print("Optimizing the transportation table...")
+    if table.optimize():
+        print("Optimized transportation table :")
+        table.show(table.transportation_table)
+        print(f"Total cost : {table.get_total_cost()}")
