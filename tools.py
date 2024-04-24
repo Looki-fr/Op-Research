@@ -1,12 +1,14 @@
 from hmac import new
 from io import TextIOWrapper
+from math import e
+from operator import ne
 from tabulate import tabulate
 from typing import Union
 from logger import print
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import matplotlib.animation as animation
-from numpy import linalg
+from numpy import linalg, rec
 import graphviz as gv
 
 
@@ -429,18 +431,20 @@ class TransportationTable:
     def get_graph(self) -> 'Graph':
         graph = Graph()
         indexes = self.get_transportation_indexes()
-        for i, index in enumerate(indexes):
-            graph.states.append(State(f"P_{index.row}", self.supply[index.row]))
-            graph.states.append(State(f"O_{index.col}", self.demand[index.col]))
-            graph.edges.append((State(f"P_{index.row}", self.supply[index.row]), State(f"O_{index.col}", self.demand[index.col]), self.transportation_table[index]))
+        for index in indexes:
+            p = State(f"P_{index.row}", self.supply[index.row])
+            o = State(f"O_{index.col}", self.demand[index.col])
+            graph.states.add(p)
+            graph.states.add(o)
+            graph.edges.append((p, o, self.transportation_table[index]))
         return graph
 
 
 class Graph:
 
     def __init__(self) -> None:
-        self.states: list[State] = []
-        self.edges: list[tuple[State]] = []
+        self.states: set[State] = set()
+        self.edges: list[tuple[State, State, int]] = []
 
     def __str__(self) -> str:
         return f"States : {self.states}\nEdges : {[f'{state.name} -> {next_state.name}' for state, next_state, _ in self.edges]}"
@@ -458,6 +462,43 @@ class Graph:
         for state, next_state, value in self.edges:
             graph.edge(state.name, next_state.name, label=str(value))
         graph.view(cleanup=True)
+
+    def is_degenerate(self) -> bool:
+        return len(self.edges) != len(self.states) - 1 or self.has_cycle()
+
+    def has_cycle(self) -> Union[list['State'], bool]:
+        # Check if there is a cycle in the graph
+        # edges aren't directed when checking for cycles
+        visited = set()
+        recursion_stack = list()
+
+        def dfs(state, parent):
+            visited.add(state)
+            recursion_stack.append(state)
+
+            edges = [edge for edge in self.edges if edge[0] == state]
+            edges += [(edge[1], edge[0], edge[2]) for edge in self.edges if edge[1] == state]
+            for _, next_state, _ in edges:
+                if next_state == state or parent is not None and next_state == parent:
+                    continue
+                if next_state not in visited:
+                    path = dfs(next_state, state)
+                    if path:
+                        return path
+                elif next_state in recursion_stack:
+                    # clear the beginning of the recursion stack until the first occurence of the next state
+                    while recursion_stack[0] != next_state and len(recursion_stack) > 0:
+                        recursion_stack.pop(0)
+                    return recursion_stack
+            recursion_stack.remove(state)
+            return False
+
+        for state in self.states:
+            if state not in visited:
+                cycle = dfs(state, None)
+                if cycle:
+                    return cycle
+        return False
 
 
 class State:
@@ -507,3 +548,15 @@ if __name__ == "__main__":
     print("Graph :")
     print(graph)
     graph.display()
+    print(f"Is the graph degenerate ? {graph.is_degenerate()}")
+    print(f"Does the graph have a cycle ? {graph.has_cycle()}")
+    # wait for the user to continue
+    input("Press any key to continue...")
+    # add a cycle by adding an edge with the marginal cost
+    index = table.marginal_costs.index(min_mcost)
+    state = State(f"P_{index.row}", table.supply[index.row])
+    next_state = State(f"O_{index.col}", table.demand[index.col])
+    graph.edges.append((state, next_state, 0))
+    graph.display()
+    print(f"Is the graph degenerate ? {graph.is_degenerate()}")
+    print(f"Does the graph have a cycle ? {graph.has_cycle()}")
