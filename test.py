@@ -8,12 +8,12 @@ def generate_problem(n, m):
     matrix = Matrix(n, m)
     for i in range(n):
         for j in range(m):
-            matrix[Index(i, j)] = randint(1, 100)
+            matrix[(i, j)] = randint(1, 100)
     problem.costs = matrix
     temp = Matrix(n, m)
     for i in range(n):
         for j in range(m):
-            temp[Index(i, j)] = randint(1, 100)
+            temp[(i, j)] = randint(1, 100)
     problem.supply = [sum(temp.rows[i]) for i in range(n)]
     problem.demand = [sum(temp.cols[j]) for j in range(m)]
     if sum(problem.supply) != sum(problem.demand):
@@ -22,9 +22,9 @@ def generate_problem(n, m):
 
 
 if __name__ == "__main__":
-    for i in range(10):
+    for i in range(100):
         print(f"Test {i + 1}")
-        n = 40
+        n = 10
         problem = generate_problem(n, n)
         print("Problem generated")
         #!print(problem)

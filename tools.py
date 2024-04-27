@@ -18,63 +18,6 @@ class BadFormat(Exception):
     pass
 
 
-class Index:
-    def __init__(self, row, col):
-        self.row = row
-        self.col = col
-
-    def __iadd__(self, other):
-        # if other is a tuple
-        if isinstance(other, tuple):
-            self.row += other[0]
-            self.col += other[1]
-        # if other is an Index
-        elif isinstance(other, Index):
-            self.row += other.row
-            self.col += other.col
-        if self.row < 0 or self.col < 0:
-            raise IndexError("Index out of bounds")
-        return self
-
-    def __add__(self, other):
-        return self.__iadd__(other)
-
-    def __isub__(self, other):
-        if isinstance(other, tuple):
-            self.row -= other[0]
-            self.col -= other[1]
-        elif isinstance(other, Index):
-            self.row -= other.row
-            self.col -= other.col
-        if self.row < 0 or self.col < 0:
-            raise IndexError("Index out of bounds")
-        return self
-
-    def __sub__(self, other):
-        return self.__isub__(other)
-
-    def __mul__(self, other):
-        return Index(self.row * other, self.col * other)
-
-    def __rmul__(self, other):
-        return self.__mul__(other)
-
-    def __eq__(self, other):
-        return self.row == other.row and self.col == other.col
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def __hash__(self) -> int:
-        return hash((self.row, self.col))
-
-    def __str__(self):
-        return f"({self.row}, {self.col})"
-
-    def __repr__(self) -> str:
-        return f"Index({self.row}, {self.col})"
-
-
 class Matrix():
 
     def __init__(self, rows: int, cols: int, fill: Union[int, float] = 0):
@@ -84,11 +27,11 @@ class Matrix():
         self._cols = None
         self.matrix = [[fill for _ in range(cols)] for _ in range(rows)]
 
-    def __getitem__(self, index: Index):
-        return self.matrix[index.row][index.col]
+    def __getitem__(self, index: tuple[int, int]):
+        return self.matrix[index[0]][index[1]]
 
-    def __setitem__(self, index: Index, value: Union[int, float]):
-        self.matrix[index.row][index.col] = value
+    def __setitem__(self, index: tuple[int, int], value: Union[int, float]):
+        self.matrix[index[0]][index[1]] = value
 
     def __str__(self):
         return tabulate(self.matrix, tablefmt="fancy_grid")
@@ -137,7 +80,7 @@ class Matrix():
         matrix = Matrix(rows, cols)
         for i, row in enumerate(lst):
             for j, cell in enumerate(row):
-                matrix[Index(i, j)] = cell
+                matrix[(i, j)] = cell
         return matrix
 
     def __add__(self, other: 'Matrix') -> 'Matrix':
@@ -146,7 +89,7 @@ class Matrix():
         matrix = Matrix(self.rows_size, self.cols_size)
         for i, row in enumerate(self.matrix):
             for j, cell in enumerate(row):
-                matrix[Index(i, j)] = cell + other[Index(i, j)]
+                matrix[(i, j)] = cell + other[(i, j)]
         return matrix
 
     def __sub__(self, other: 'Matrix') -> 'Matrix':
@@ -155,7 +98,7 @@ class Matrix():
         matrix = Matrix(self.rows_size, self.cols_size)
         for i, row in enumerate(self.matrix):
             for j, cell in enumerate(row):
-                matrix[Index(i, j)] = cell - other[Index(i, j)]
+                matrix[(i, j)] = cell - other[(i, j)]
         return matrix
 
     def __mul__(self, other: Union[int, float, 'Matrix']) -> 'Matrix':
@@ -163,7 +106,7 @@ class Matrix():
             matrix = Matrix(self.rows_size, self.cols_size)
             for i, row in enumerate(self.matrix):
                 for j, cell in enumerate(row):
-                    matrix[Index(i, j)] = cell * other
+                    matrix[(i, j)] = cell * other
             return matrix
         elif isinstance(other, Matrix):
             if self.cols_size != other.rows_size:
@@ -171,7 +114,7 @@ class Matrix():
             matrix = Matrix(self.rows_size, other.cols_size)
             for i, row in enumerate(self.matrix):
                 for j, cell in enumerate(other.cols()):
-                    matrix[Index(i, j)] = sum([cell1 * cell2 for cell1, cell2 in zip(row, cell)])
+                    matrix[(i, j)] = sum([cell1 * cell2 for cell1, cell2 in zip(row, cell)])
             return matrix
         else:
             raise ValueError("The other matrix must be a scalar or a matrix")
@@ -203,11 +146,11 @@ class Matrix():
     def __max__(self) -> Union[int, float]:
         return max(self.flatten())
 
-    def index(self, item: Union[int, float]) -> Index:
+    def index(self, item: Union[int, float]) -> tuple[int, int]:
         for i, row in enumerate(self.matrix):
             for j, cell in enumerate(row):
                 if cell == item:
-                    return Index(i, j)
+                    return (i, j)
         raise ValueError("Item not found")
 
     def copy(self) -> 'Matrix':
@@ -239,7 +182,7 @@ class TransportationTable:
         potentials = Matrix(self.costs.rows_size, self.costs.cols_size)
         for i in range(self.costs.rows_size):
             for j in range(self.costs.cols_size):
-                potentials[Index(i, j)] = s[i] - t[j]
+                potentials[(i, j)] = s[i] - t[j]
         return self.costs - potentials
 
     @property
@@ -248,7 +191,7 @@ class TransportationTable:
         potentials = Matrix(self.costs.rows_size, self.costs.cols_size)
         for i in range(self.costs.rows_size):
             for j in range(self.costs.cols_size):
-                potentials[Index(i, j)] = s[i] - t[j]
+                potentials[(i, j)] = s[i] - t[j]
         return potentials
 
     @staticmethod
@@ -266,7 +209,7 @@ class TransportationTable:
             if len(row) != cols:
                 raise BadFormat("The matrix is not well formatted")
             for j, cell in enumerate(row):
-                matrix[Index(i, j)] = cell
+                matrix[(i, j)] = cell
         # last line is the demand
         table.demand = list(map(int, file.readline().split(" ")))
         if len(table.demand) != cols:
@@ -320,7 +263,7 @@ class TransportationTable:
         while i < len(supply) and j < len(demand):
             # get the minimum between the supply and demand
             q = min(supply[i], demand[j])
-            matrix[Index(i, j)] = q
+            matrix[(i, j)] = q
             supply[i] -= q
             demand[j] -= q
             if supply[i] == 0:
@@ -329,39 +272,39 @@ class TransportationTable:
                 j += 1
         self.transportation_table = matrix
 
-    def _get_edges(self) -> list[Index]:
+    def _get_edges(self) -> list[tuple[int, int]]:
         # list the indexes where the values are not null in the transportation table
-        indexes: list[Index] = []
+        indexes: list[tuple[int, int]] = []
         for i, row in enumerate(self.transportation_table.rows):
             for j, cell in enumerate(row):
                 if cell != 0:
-                    indexes.append(Index(i, j))
+                    indexes.append((i, j))
         return indexes
 
     #! this function is not working properly
-    def _missing_edges_depreciated(self, indexes: list[Index]) -> None:
+    def _missing_edges_depreciated(self, indexes: list[tuple[int, int]]) -> None:
         missing_edges = []
         indexes = indexes.copy()
         for j in indexes.copy():
             # check if the cell is alone in its row and column regarding the other cells
-            if sum([1 for index in indexes if index.row == j.row]) == 1 and sum([1 for index in indexes if index.col == j.col]) == 1:
+            if sum([1 for index in indexes if index[0] == j[0]]) == 1 and sum([1 for index in indexes if index[1] == j[1]]) == 1:
                 # if the cell is alone in its row and column then link it to the smallest cost cell in the same row or column which is not the cell itself
                 print("Cell alone : ", j)
-                row = self.costs.rows[j.row]
-                col = self.costs.cols[j.col]
+                row = self.costs.rows[j[0]]
+                col = self.costs.cols[j[1]]
                 print("Row : ", row)
                 print("Col : ", col)
                 val = max(row + col)
                 for k, (rcell, ccell) in enumerate(zip(row, col)):
                     #! sometime we can have two equivalent cells with the same cost
-                    if k != j.col and k != j.row and (rcell == val or ccell == val):
-                        print("Equivalent cells", rcell, ccell, val, (k, j.col), (j.row, k))
-                    if k != j.col and ccell < val:
+                    if k != j[1] and k != j[0] and (rcell == val or ccell == val):
+                        print("Equivalent cells", rcell, ccell, val, (k, j[1]), (j[0], k))
+                    if k != j[1] and ccell < val:
                         val = ccell
-                        new_index = Index(j.row, k)
-                    if k != j.row and rcell < val:
+                        new_index = (j[0], k)
+                    if k != j[0] and rcell < val:
                         val = rcell
-                        new_index = Index(k, j.col)
+                        new_index = (k, j[1])
                 if new_index not in indexes:
                     indexes.append(new_index)
                     missing_edges.append(new_index)
@@ -370,7 +313,7 @@ class TransportationTable:
         return missing_edges
 
     @Timer.timeit
-    def _missing_edges_slow(self, indexes: list[Index]) -> None:
+    def _missing_edges_slow(self, indexes: list[tuple[int, int]]) -> None:
         missing_edges = []
         indexes = indexes.copy()
         nb_missing_edges = len(self.supply) + len(self.demand) - len(indexes) - 1
@@ -380,7 +323,7 @@ class TransportationTable:
         gn = self.random  # ? get the actual random generator
         for i in range(nb_missing_edges):
             # find the edge with the minimum cost
-            edges = [Index(i, j) for i in range(len(self.supply)) for j in range(len(self.demand)) if Index(i, j) not in indexes]
+            edges = [(i, j) for i in range(len(self.supply)) for j in range(len(self.demand)) if (i, j) not in indexes]
             # if there is some equivalent costs then randomize the order
             sorted_edges = sorted(edges, key=lambda x: (self.costs[x], gn.random()))
             # check if the edge can be added without creating a cycle
@@ -396,7 +339,7 @@ class TransportationTable:
         return missing_edges
 
     @Timer.timeit
-    def _missing_edges(self, indexes: list[Index]) -> None:
+    def _missing_edges(self, indexes: list[tuple[int, int]]) -> None:
         missing_edges = []
         indexes = set(indexes)  # Convert to set for faster membership check
         supply_length = len(self.supply)
@@ -409,7 +352,7 @@ class TransportationTable:
 
         # Initialize random generator with the class seed
         gn = self.random
-        all_edges = {Index(i, j) for i in range(supply_length) for j in range(demand_length)}
+        all_edges = {(i, j) for i in range(supply_length) for j in range(demand_length)}
 
         # Shuffle the edges randomly
         shuffled_edges = list(all_edges - indexes)
@@ -447,16 +390,16 @@ class TransportationTable:
         # g.display()
         # fill the matrix
         for i, index in enumerate(indexes):
-            matrix[Index(i, index.row)] = 1
-            matrix[Index(i, len(self.supply) + index.col)] = -1
+            matrix[(i, index[0])] = 1
+            matrix[(i, len(self.supply) + index[1])] = -1
         else:
             # init one of the potentials to 0
-            matrix[Index(size - 1, 0)] = 1
+            matrix[(size - 1, 0)] = 1
             i = 0
             while matrix.determinant() == 0 and i < size - 1:
-                matrix[Index(size - 1, i)] = 0
+                matrix[(size - 1, i)] = 0
                 i += 1
-                matrix[Index(size - 1, i)] = 1
+                matrix[(size - 1, i)] = 1
         # create the vector of costs
         costs = [self.costs[index] for index in indexes]
         costs.append(0)
@@ -520,7 +463,7 @@ class TransportationTable:
                 min_cost = float('inf')
                 min_cost_index = None
                 for j, cost in enumerate(costs[i]):
-                    if supply[i] > 0 and demand[j] > 0 and allocations[Index(i, j)] == 0:
+                    if supply[i] > 0 and demand[j] > 0 and allocations[(i, j)] == 0:
                         if cost < min_cost:
                             min_cost = cost
                             min_cost_index = j
@@ -531,7 +474,7 @@ class TransportationTable:
                 min_cost = float('inf')
                 min_cost_index = None
                 for k, row in enumerate(costs):
-                    if supply[k] > 0 and demand[i] > 0 and allocations[Index(k, i)] == 0:
+                    if supply[k] > 0 and demand[i] > 0 and allocations[(k, i)] == 0:
                         if row[i] < min_cost:
                             min_cost = row[i]
                             min_cost_index = k
@@ -543,7 +486,7 @@ class TransportationTable:
     def fill_edge(self, allocations, edge, supply, demand, costs) -> None:
         i, j = edge
         allocation = min(supply[i], demand[j])
-        allocations[Index(i, j)] = allocation
+        allocations[(i, j)] = allocation
         supply[i] -= allocation
         demand[j] -= allocation
         if supply[i] == 0:
@@ -556,8 +499,8 @@ class TransportationTable:
         if fill:
             indexes += self._missing_edges(indexes)
         for index in indexes:
-            p = State(f"S_{index.row + 1}", self.supply[index.row])
-            o = State(f"C_{char_map(index.col)}", self.demand[index.col])
+            p = State(f"S_{index[0] + 1}", self.supply[index[0]])
+            o = State(f"C_{char_map(index[1])}", self.demand[index[1]])
             graph.states.add(p)
             graph.states.add(o)
             graph.edges.append(Edge(p, o, self.transportation_table[index], index))
@@ -594,8 +537,8 @@ class TransportationTable:
             # get the graph
             graph = self.get_graph(fill=graph.is_degenerate())  # ! this line sometimes doesn'nt get the same missing edges
             # add the edge to the graph
-            state = State(f"S_{index.row + 1}", self.supply[index.row])
-            next_state = State(f"C_{char_map(index.col)}", self.demand[index.col])
+            state = State(f"S_{index[0] + 1}", self.supply[index[0]])
+            next_state = State(f"C_{char_map(index[1])}", self.demand[index[1]])
             graph.edges.append(Edge(state, next_state, 0, index))
             # find the added cycle
             cycle: list[Edge] = graph.has_cycle()
@@ -729,11 +672,11 @@ class Graph:
         return False
 
     @ staticmethod
-    def from_list_index(lst: list[Index]) -> 'Graph':
+    def from_list_index(lst: list[tuple[int, int]]) -> 'Graph':
         graph = Graph()
         for index in lst:
-            state = State(f"S_{index.row + 1}", 0)
-            next_state = State(f"C_{char_map(index.col)}", 0)
+            state = State(f"S_{index[0] + 1}", 0)
+            next_state = State(f"C_{char_map(index[1])}", 0)
             graph.states.add(state)
             graph.states.add(next_state)
             graph.edges.append(Edge(state, next_state, 0, index))
@@ -763,14 +706,14 @@ class State:
 
 
 class Edge(tuple[State, State, int]):
-    def __init__(self, state: State, next_state: State, value: int, index: Index) -> None:
+    def __init__(self, state: State, next_state: State, value: int, index: tuple[int, int]) -> None:
         super().__init__()
         self.state = state
         self.next_state = next_state
         self.value = value
         self.matrix_index = index
 
-    def __new__(cls, state: State, next_state: State, value: int, index: Index):
+    def __new__(cls, state: State, next_state: State, value: int, index: tuple[int, int]):
         return super().__new__(cls, (state, next_state, value))
 
     def __str__(self) -> str:
