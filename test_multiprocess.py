@@ -1,3 +1,5 @@
+from multiprocessing import Pool, cpu_count
+import os
 from tools import *
 from random import randint
 from timer import Timer
@@ -21,18 +23,16 @@ def generate_problem(n, m):
     return problem
 
 
+def worker(i):
+    print(f"Test {i + 1} in process id {os.getpid()}")
+    n = 40
+    problem = generate_problem(n, n)
+    problem.NordWestOptimized()
+    problem.BalasHammerOptimized()
+
+
 if __name__ == "__main__":
-    for i in range(10):
-        print(f"Test {i + 1}")
-        n = 40
-        problem = generate_problem(n, n)
-        print("Problem generated")
-        #!print(problem)
-        problem.BalasHammerOptimized()
-        print("BalasHammerOptimized")
-        problem.NordWestOptimized()
-        print("NordWestOptimized")
+    with Pool(cpu_count()) as p:
+        p.map(worker, range(100))
     print("Average times:\n - ", end="")
     print(*[f"{k}: {round(v * 1000, 3)} ms (" + str(len(Timer.timedict[k])) + ")" for k, v in Timer.average_times.items()], sep="\n - ")
-    print("Worst times:\n - ", end="")
-    print(*[f"{k}: {round(v * 1000, 3)} ms" for k, v in Timer.worst_times.items()], sep="\n - ")

@@ -5,7 +5,7 @@ from logger import print
 from numpy import linalg
 import graphviz as gv
 import string
-from random import Random
+from random import Random, shuffle
 import time
 from timer import Timer
 
@@ -233,6 +233,7 @@ class TransportationTable:
         self.transportation_table = Matrix(0, 0)
 
     @property
+    @Timer.timeit
     def marginal_costs(self) -> Matrix:
         s, t = self.potentials()
         potentials = Matrix(self.costs.rows_size, self.costs.cols_size)
@@ -368,7 +369,8 @@ class TransportationTable:
                     raise ValueError("Error in the new indexes allocation")
         return missing_edges
 
-    def _missing_edges(self, indexes: list[Index]) -> None:
+    @Timer.timeit
+    def _missing_edges_slow(self, indexes: list[Index]) -> None:
         missing_edges = []
         indexes = indexes.copy()
         nb_missing_edges = len(self.supply) + len(self.demand) - len(indexes) - 1
@@ -393,6 +395,43 @@ class TransportationTable:
             raise ValueError("Error in the missing edges allocation")
         return missing_edges
 
+    @Timer.timeit
+    def _missing_edges(self, indexes: list[Index]) -> None:
+        missing_edges = []
+        indexes = set(indexes)  # Convert to set for faster membership check
+        supply_length = len(self.supply)
+        demand_length = len(self.demand)
+        nb_missing_edges = supply_length + demand_length - len(indexes) - 1
+
+        if self.missing_edge_buffer is not None and nb_missing_edges > 0:
+            missing_edges.append(self.missing_edge_buffer)
+            indexes.add(self.missing_edge_buffer)
+
+        # Initialize random generator with the class seed
+        gn = self.random
+        all_edges = {Index(i, j) for i in range(supply_length) for j in range(demand_length)}
+
+        # Shuffle the edges randomly
+        shuffled_edges = list(all_edges - indexes)
+        gn.shuffle(shuffled_edges)
+
+        # Sort the shuffled edges by cost
+        sorted_edges = sorted(shuffled_edges, key=lambda x: self.costs[x])
+
+        for edge in sorted_edges:
+            if len(missing_edges) == nb_missing_edges:
+                break
+            graph = Graph.from_list_index(list(indexes) + [edge])
+            if not graph.has_cycle():
+                indexes.add(edge)
+                missing_edges.append(edge)
+
+        if len(missing_edges) != nb_missing_edges:
+            raise ValueError("Error in the missing edges allocation")
+
+        return missing_edges
+
+    @Timer.timeit
     def potentials(self) -> tuple[list[int], list[int]]:
         size = len(self.supply) + len(self.demand)
         # potentials are binds by the following equation
@@ -528,7 +567,10 @@ class TransportationTable:
     def optimize(self) -> bool:
         # check if there is a cycle in the actual proposition
         first = True
+        nb_iter = 0
         while True:
+            print("Iteration", nb_iter)
+            nb_iter += 1
             # Step 1 : Randomize the seed to get a different result each iteration and avoid getting stuck in a loop
             self.seed = time.time()
             # Step 2 : Check if the graph has a cycle and remove it
@@ -602,6 +644,7 @@ class TransportationTable:
     @Timer.timeit
     def BalasHammerOptimized(self):
         self.BalasHammer()
+        print("BalasHammer")
         self.optimize()
 
 
@@ -636,6 +679,7 @@ class Graph:
     def is_degenerate(self) -> bool:
         return len(self.edges) < len(self.states) - 1 or bool(self.has_cycle())
 
+    @Timer.timeit
     def has_cycle(self) -> Union[list['Edge'], bool]:
         # Check if there is a cycle in the graph
         # edges aren't directed when checking for cycles

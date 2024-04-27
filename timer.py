@@ -28,3 +28,7 @@ class Timer:
     @staticproperty
     def average_times():
         return {k: sum(v) / len(v) for k, v in Timer.timedict.items()}
+
+    @staticproperty
+    def worst_times():
+        return {k: max(v) for k, v in Timer.timedict.items()}
