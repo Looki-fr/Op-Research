@@ -33,3 +33,11 @@ def print(*args, **kwargs):
         return __builtin__.print(*args, **kwargs)
     else:
         return __builtin__.print(*args, **kwargs)
+
+
+def verbose_print(*args, **kwargs):
+    """My custom verbose print() function."""
+    if Settings.verbose:
+        return print(*args, **kwargs)
+    else:
+        return None

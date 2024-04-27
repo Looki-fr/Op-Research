@@ -4,6 +4,14 @@ from typing import Union
 from logger import print
 from numpy import linalg
 import graphviz as gv
+import string
+from random import Random
+import time
+from timer import Timer
+
+
+# def char_map(x): return char_map(x // 26) + string.ascii_lowercase[x % 26] if x // 26 else string.ascii_lowercase[x]
+def char_map(x): return x
 
 
 class BadFormat(Exception):
@@ -94,6 +102,11 @@ class Matrix():
 
     def flatten(self):
         return [cell for row in self.matrix for cell in row]
+
+    def determinant(self):
+        if self.rows_size != self.cols_size:
+            raise ValueError("The matrix must be square")
+        return linalg.det(self.matrix)
 
     @property
     def rows(self) -> list[list[Union[int, float]]]:
@@ -205,6 +218,14 @@ class Matrix():
 
 class TransportationTable:
 
+    missing_edge_buffer = None
+
+    seed = time.time()  # ? this is used to get the same random values and the same results each time
+
+    @property
+    def random(self) -> Random:
+        return Random(self.seed)
+
     def __init__(self) -> None:
         self.supply = []
         self.demand = []
@@ -219,6 +240,15 @@ class TransportationTable:
             for j in range(self.costs.cols_size):
                 potentials[Index(i, j)] = s[i] - t[j]
         return self.costs - potentials
+
+    @property
+    def potential_costs(self) -> Matrix:
+        s, t = self.potentials()
+        potentials = Matrix(self.costs.rows_size, self.costs.cols_size)
+        for i in range(self.costs.rows_size):
+            for j in range(self.costs.cols_size):
+                potentials[Index(i, j)] = s[i] - t[j]
+        return potentials
 
     @staticmethod
     def from_file(file: TextIOWrapper) -> 'TransportationTable':
@@ -252,9 +282,9 @@ class TransportationTable:
         # add the demand
         table.append(self.demand)
         # headers
-        headers = [f"C_{i}" for i in range(len(self.supply))] + ["Provitions"]
+        headers = [f"C_{char_map(i)}" for i in range(len(self.supply))] + ["Provitions"]
         # index
-        index = [f"P_{i}" for i in range(len(self.demand))] + ["Orders"]
+        index = [f"S_{i + 1}" for i in range(len(self.demand))] + ["Orders"]
         return tabulate(table, tablefmt="fancy_grid", showindex=index, headers=headers)
 
     def __repr__(self) -> str:
@@ -263,7 +293,7 @@ class TransportationTable:
     def display(self) -> None:
         print(self)
 
-    def show(self, matrix: Matrix, rows: list = None, cols: list = None) -> None:
+    def show(self, matrix: Matrix, rows: list = None, cols: list = None, row_name: str = "Provitions", col_name: str = "Orders") -> None:
         if rows is None:
             rows = self.supply
         if cols is None:
@@ -274,11 +304,12 @@ class TransportationTable:
         # add the demand
         table.append(cols)
         # headers
-        headers = [f"C_{i}" for i in range(len(self.demand))] + ["Provitions"]
+        headers = [f"C_{char_map(i)}" for i in range(len(self.demand))] + [row_name]
         # index
-        index = [f"P_{i}" for i in range(len(self.supply))] + ["Orders"]
+        index = [f"S_{i + 1}" for i in range(len(self.supply))] + [col_name]
         print(tabulate(table, tablefmt="fancy_grid", showindex=index, headers=headers))
 
+    @Timer.timeit
     def NorthWestCorner(self) -> None:
         # create a matrix with the same dimension
         matrix = Matrix(len(self.supply), len(self.demand))
@@ -297,35 +328,70 @@ class TransportationTable:
                 j += 1
         self.transportation_table = matrix
 
-    def get_transportation_indexes(self) -> list[Index]:
+    def _get_edges(self) -> list[Index]:
         # list the indexes where the values are not null in the transportation table
         indexes: list[Index] = []
         for i, row in enumerate(self.transportation_table.rows):
             for j, cell in enumerate(row):
                 if cell != 0:
                     indexes.append(Index(i, j))
-        else:
-            # if the number of indexes is less than the (size of the matrix - 1) then we must add some constraints
-            # to do that we must link cell which are alone in both their row and column
-            for j in indexes.copy():
-                # check if the cell is alone in its row and column regarding the other cells
-                if sum([1 for index in indexes if index.row == j.row]) == 1 and sum([1 for index in indexes if index.col == j.col]) == 1:
-                    # if the cell is alone in its row and column then link it to the smallest cost cell in the same row or column which is not the cell itself
-                    row = self.costs.rows[j.row]
-                    col = self.costs.cols[j.col]
-                    val = max(row + col)
-                    for k, (rcell, ccell) in enumerate(zip(row, col)):
-                        if k != j.col and ccell < val:
-                            val = ccell
-                            new_index = Index(j.row, k)
-                        if k != j.row and rcell < val:
-                            val = rcell
-                            new_index = Index(k, j.col)
-                    if new_index not in indexes:
-                        indexes.append(new_index)
-                    else:
-                        raise ValueError("Error in the new indexes allocation")
         return indexes
+
+    #! this function is not working properly
+    def _missing_edges_depreciated(self, indexes: list[Index]) -> None:
+        missing_edges = []
+        indexes = indexes.copy()
+        for j in indexes.copy():
+            # check if the cell is alone in its row and column regarding the other cells
+            if sum([1 for index in indexes if index.row == j.row]) == 1 and sum([1 for index in indexes if index.col == j.col]) == 1:
+                # if the cell is alone in its row and column then link it to the smallest cost cell in the same row or column which is not the cell itself
+                print("Cell alone : ", j)
+                row = self.costs.rows[j.row]
+                col = self.costs.cols[j.col]
+                print("Row : ", row)
+                print("Col : ", col)
+                val = max(row + col)
+                for k, (rcell, ccell) in enumerate(zip(row, col)):
+                    #! sometime we can have two equivalent cells with the same cost
+                    if k != j.col and k != j.row and (rcell == val or ccell == val):
+                        print("Equivalent cells", rcell, ccell, val, (k, j.col), (j.row, k))
+                    if k != j.col and ccell < val:
+                        val = ccell
+                        new_index = Index(j.row, k)
+                    if k != j.row and rcell < val:
+                        val = rcell
+                        new_index = Index(k, j.col)
+                if new_index not in indexes:
+                    indexes.append(new_index)
+                    missing_edges.append(new_index)
+                else:
+                    raise ValueError("Error in the new indexes allocation")
+        return missing_edges
+
+    def _missing_edges(self, indexes: list[Index]) -> None:
+        missing_edges = []
+        indexes = indexes.copy()
+        nb_missing_edges = len(self.supply) + len(self.demand) - len(indexes) - 1
+        if self.missing_edge_buffer is not None and nb_missing_edges > 0:
+            missing_edges.append(self.missing_edge_buffer)
+            indexes.append(self.missing_edge_buffer)
+        gn = self.random  # ? get the actual random generator
+        for i in range(nb_missing_edges):
+            # find the edge with the minimum cost
+            edges = [Index(i, j) for i in range(len(self.supply)) for j in range(len(self.demand)) if Index(i, j) not in indexes]
+            # if there is some equivalent costs then randomize the order
+            sorted_edges = sorted(edges, key=lambda x: (self.costs[x], gn.random()))
+            # check if the edge can be added without creating a cycle
+            for i in range(len(sorted_edges)):
+                graph = Graph.from_list_index(indexes + [sorted_edges[i]])
+                if not graph.has_cycle():
+                    indexes.append(sorted_edges[i])
+                    missing_edges.append(sorted_edges[i])
+                    break
+        # check if the number of missing edges is correct
+        if len(missing_edges) != nb_missing_edges:
+            raise ValueError("Error in the missing edges allocation")
+        return missing_edges
 
     def potentials(self) -> tuple[list[int], list[int]]:
         size = len(self.supply) + len(self.demand)
@@ -335,7 +401,11 @@ class TransportationTable:
         t = [None] * len(self.demand)
         # make the system of equations matrix to solve
         matrix = Matrix(size, size)
-        indexes = self.get_transportation_indexes()
+        indexes = self._get_edges()
+        missing = self._missing_edges(indexes)
+        indexes += missing
+        g = Graph.from_list_index(indexes)
+        # g.display()
         # fill the matrix
         for i, index in enumerate(indexes):
             matrix[Index(i, index.row)] = 1
@@ -343,15 +413,35 @@ class TransportationTable:
         else:
             # init one of the potentials to 0
             matrix[Index(size - 1, 0)] = 1
+            i = 0
+            while matrix.determinant() == 0 and i < size - 1:
+                matrix[Index(size - 1, i)] = 0
+                i += 1
+                matrix[Index(size - 1, i)] = 1
         # create the vector of costs
         costs = [self.costs[index] for index in indexes]
         costs.append(0)
-        res = linalg.solve(matrix.matrix, costs)
+        try:
+            res = linalg.solve(matrix.matrix, costs)
+        except linalg.LinAlgError:
+            g = Graph.from_list_index(indexes)
+            g.display()
+            print("Indexes : ", indexes)
+            print("nb indexes : ", len(indexes))
+            print("Missing : ", missing)
+            print("nb missing : ", len(missing))
+            print("Matrix det: ", matrix.determinant())
+            print("Doublon in indexes : ", len(set(indexes)) != len(indexes))
+            print("Graph is degenerate : ", g.is_degenerate())
+            print("Actual transport table : ")
+            self.show(self.transportation_table)
+            raise ValueError("The system of equations is not solvable")
         # assign the values to the potentials
         s = [*map(int, res[:len(self.supply)])]
         t = [*map(int, res[len(self.supply):])]
         return (s, t)
 
+    @Timer.timeit
     def BalasHammer(self) -> None:
         supply = self.supply.copy()
         demand = self.demand.copy()
@@ -396,7 +486,7 @@ class TransportationTable:
                             min_cost = cost
                             min_cost_index = j
                 if min_cost_index is not None:
-                    print(f"{penalty_type}: {cell}, Penalty: {penalty}")
+                    #!print(f"{penalty_type}: {cell}, Penalty: {penalty}")
                     return (i, min_cost_index)
             elif penalty_type == "column":
                 min_cost = float('inf')
@@ -407,7 +497,7 @@ class TransportationTable:
                             min_cost = row[i]
                             min_cost_index = k
                 if min_cost_index is not None:
-                    print(f"{penalty_type}: {cell}, Penalty: {penalty}")
+                    #!print(f"{penalty_type}: {cell}, Penalty: {penalty}")
                     return (min_cost_index, i)
         return None
 
@@ -421,55 +511,98 @@ class TransportationTable:
             for k in range(len(costs[i])):
                 costs[i][k] = float('inf')
 
-    def get_graph(self) -> 'Graph':
+    def get_graph(self, fill=False) -> 'Graph':
         graph = Graph()
-        indexes = self.get_transportation_indexes()
+        indexes = self._get_edges()
+        if fill:
+            indexes += self._missing_edges(indexes)
         for index in indexes:
-            p = State(f"P_{index.row}", self.supply[index.row])
-            o = State(f"O_{index.col}", self.demand[index.col])
+            p = State(f"S_{index.row + 1}", self.supply[index.row])
+            o = State(f"C_{char_map(index.col)}", self.demand[index.col])
             graph.states.add(p)
             graph.states.add(o)
             graph.edges.append(Edge(p, o, self.transportation_table[index], index))
         return graph
 
+    @Timer.timeit
     def optimize(self) -> bool:
-        # check if we can optimize the transportation table
+        # check if there is a cycle in the actual proposition
         first = True
         while True:
+            # Step 1 : Randomize the seed to get a different result each iteration and avoid getting stuck in a loop
+            self.seed = time.time()
+            # Step 2 : Check if the graph has a cycle and remove it
+            graph = self.get_graph()
+            cycle = graph.has_cycle()
+            if cycle:
+                self.stepping_stone(cycle)
+                graph = self.get_graph()
+            # Step 3 : Compute the marginal costs
             marginal_costs = self.marginal_costs
             min_mcost = min(marginal_costs)
+            # Step 4 : Check if the table is optimized or not with the minimum marginal cost
             if min_mcost >= 0:
                 if first:
-                    print("The transportation table is already optimized")
+                    #!print("The transportation table is already optimized")
                     return False
                 # if the minimum marginal cost is positive or null then we can't optimize the table anymore
                 break
-            # find the index of the minimum marginal cost
+            # Step 5 : Add the edge with the minimum marginal cost to the graph and use the stepping stone method
             index = marginal_costs.index(min_mcost)
             # get the graph
-            graph = self.get_graph()
+            graph = self.get_graph(fill=graph.is_degenerate())  # ! this line sometimes doesn'nt get the same missing edges
             # add the edge to the graph
-            state = State(f"P_{index.row}", self.supply[index.row])
-            next_state = State(f"O_{index.col}", self.demand[index.col])
+            state = State(f"S_{index.row + 1}", self.supply[index.row])
+            next_state = State(f"C_{char_map(index.col)}", self.demand[index.col])
             graph.edges.append(Edge(state, next_state, 0, index))
-            # find the cycle
+            # find the added cycle
             cycle: list[Edge] = graph.has_cycle()
-            # shift the cycle until the edge we added is the first one
-            while cycle[0].matrix_index != index:
-                cycle.append(cycle.pop(0))
-            # find the minimum delta
-            min_value = min([self.transportation_table[edge.matrix_index] for edge in cycle if cycle.index(edge) % 2 == 1])
-            # apply the cycle
-            for i, edge in enumerate(cycle):
-                if i % 2 == 0:
-                    self.transportation_table[edge.matrix_index] += min_value
-                else:
-                    self.transportation_table[edge.matrix_index] -= min_value
+            #!print("Cycle : ", end='')
+            #!print(*cycle, sep=' -> ')
+            # optimize the table
+            delta = self.stepping_stone(cycle)
+            if delta == 0:
+                #!print("The cost didn't change")
+                self.missing_edge_buffer = index
+            else:
+                self.missing_edge_buffer = None
+            #!print(f"Delta : {delta}")
+            #!self.show(self.transportation_table)
+            # input("Press a key...")
             first = False
         return True
 
-    def get_total_cost(self) -> int:
-        return sum([self.costs[index] * self.transportation_table[index] for index in self.get_transportation_indexes()])
+    @property
+    def total_cost(self) -> int:
+        return sum([self.costs[index] * self.transportation_table[index] for index in self._get_edges()])
+
+    def stepping_stone(self, cycle: list['Edge']) -> Union[int, float]:
+        delta_cost = [self.costs[edge.matrix_index] * (-1)**i for i, edge in enumerate(cycle)]
+        delta_cost = sum(delta_cost)
+        if delta_cost > 0:
+            delta = -min([self.transportation_table[edge.matrix_index] for edge in cycle if cycle.index(edge) % 2 == 0])
+        elif delta_cost < 0:
+            delta = min([self.transportation_table[edge.matrix_index] for edge in cycle if cycle.index(edge) % 2 == 1])
+        else:
+            raise ValueError("The cost didn't change")
+        if delta == 0:
+            return 0
+        for i, edge in enumerate(cycle):
+            if i % 2 == 0:
+                self.transportation_table[edge.matrix_index] += delta
+            else:
+                self.transportation_table[edge.matrix_index] -= delta
+        return delta
+
+    @Timer.timeit
+    def NordWestOptimized(self):
+        self.NorthWestCorner()
+        self.optimize()
+
+    @Timer.timeit
+    def BalasHammerOptimized(self):
+        self.BalasHammer()
+        self.optimize()
 
 
 class Graph:
@@ -484,16 +617,21 @@ class Graph:
     def __repr__(self) -> str:
         return f"Graph {id(self)}"
 
-    def display(self) -> None:
+    def display(self, cycle: list['Edge'] = []) -> None:
         """
         Display the graph using graphviz
         """
         graph = gv.Digraph()
         for state in self.states:
             graph.node(state.name, label=str(state))
-        for state, next_state, value in self.edges:
-            graph.edge(state.name, next_state.name, label=str(value))
+        for edge in self.edges:
+            color = "black"
+            state, next_state, value = edge
+            if edge in cycle or edge.reversed() in cycle:
+                color = "red"
+            graph.edge(state.name, next_state.name, label=str(value), arrowhead="none", color=color)
         graph.view(cleanup=True)
+        input("Press a key...")
 
     def is_degenerate(self) -> bool:
         return len(self.edges) < len(self.states) - 1 or bool(self.has_cycle())
@@ -546,6 +684,17 @@ class Graph:
                     return cycle
         return False
 
+    @ staticmethod
+    def from_list_index(lst: list[Index]) -> 'Graph':
+        graph = Graph()
+        for index in lst:
+            state = State(f"S_{index.row + 1}", 0)
+            next_state = State(f"C_{char_map(index.col)}", 0)
+            graph.states.add(state)
+            graph.states.add(next_state)
+            graph.edges.append(Edge(state, next_state, 0, index))
+        return graph
+
 
 class State:
 
@@ -554,10 +703,10 @@ class State:
         self.weight = weight
 
     def __str__(self) -> str:
-        return f"{self.name} ({self.weight})"
+        return f"{self.name}"
 
     def __repr__(self) -> str:
-        return f"State({self.name}, {self.weight})"
+        return f"State({self.name})"
 
     def __eq__(self, other: 'State') -> bool:
         return self.name == other.name and self.weight == other.weight
@@ -581,7 +730,7 @@ class Edge(tuple[State, State, int]):
         return super().__new__(cls, (state, next_state, value))
 
     def __str__(self) -> str:
-        return f"{self.state} -> {self.next_state} ({self.value})"
+        return f"({self.state},{self.next_state})"
 
     def __repr__(self) -> str:
         return f"Edge({self.state}, {self.next_state}, {self.value})"
@@ -600,22 +749,26 @@ class Edge(tuple[State, State, int]):
 
 
 if __name__ == "__main__":
-    with open("data/4.txt", "r") as f:
-        table = TransportationTable.from_file(f)
-    print("Costs matrix :")
-    table.show(table.costs)
-    print("NorthWestCorner algorithm :")
-    table.NorthWestCorner()
-    table.show(table.transportation_table)
-    print("Total cost : ", table.get_total_cost())
-    min_mcost = min(table.marginal_costs)
-    print(f"Minimum marginal cost is {min_mcost} at {table.marginal_costs.index(min_mcost)}")
-    print("Balas-Hammer algorithm :")
-    table.BalasHammer()
-    table.show(table.transportation_table)
-    print("Total cost : ", table.get_total_cost())
-    print("Optimizing the transportation table...")
-    if table.optimize():
-        print("Optimized transportation table :")
+
+    def test_transportation_table(i):
+        print(f"Test {i}")
+        with open(f"data/test{i}.txt", "r") as f:
+            table = TransportationTable.from_file(f)
+        print("Costs matrix :")
+        table.show(table.costs)
+        print("Balas algorithm :")
+        table.NorthWestCorner()
         table.show(table.transportation_table)
-        print(f"Total cost : {table.get_total_cost()}")
+        print("Total cost : ", table.total_cost)
+        row, col = table.potentials()
+        print("Marginal costs and potentials :")
+        table.show(table.marginal_costs, row, col, "potentials", "potentials")
+        # table.get_graph().display()
+        print("Optimizing the transportation table...")
+        if table.optimize():
+            print("Optimized transportation table :")
+            table.show(table.transportation_table)
+            print(f"Total cost : {table.total_cost}")
+
+    for i in range(100):
+        test_transportation_table(2)
