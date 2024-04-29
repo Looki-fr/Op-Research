@@ -26,12 +26,7 @@ if __name__ == "__main__":
         print(f"Test {i + 1}")
         n = 10
         problem = generate_problem(n, n)
-        # print("Problem generated")
-        #!print(problem)
         problem.NordWestOptimized()
-        problem.BalasHammerOptimized()
-        # print("BalasHammerOptimized")
-        # print("NordWestOptimized")
     print("Average times:\n - ", end="")
     print(*[f"{k}: {round(v * 1000, 3)} ms (" + str(len(Timer.timedict[k])) + ")" for k, v in Timer.average_times.items()], sep="\n - ")
     print("Worst times:\n - ", end="")
