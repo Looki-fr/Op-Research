@@ -1,3 +1,4 @@
+from hmac import new
 from io import TextIOWrapper
 from matplotlib.image import resample
 from tabulate import tabulate
@@ -301,46 +302,40 @@ class TransportationTable:
                     indexes.append((i, j))
         return indexes
 
-    def _get_missing_indexes(self, indexes: list[tuple[int, int]]) -> None:
-        missing_indexes = []
-        indexes: set = set(indexes)  # Convert to set for faster membership check
+    def _get_missing_indexes(self) -> None:
+        missing_edges = []
+        edges: set = set(self.graph.edges)
         supply_length = len(self.supply)
         demand_length = len(self.demand)
-        nb_missing_indexes = supply_length + demand_length - len(indexes) - 1
+        nb_missing_indexes = supply_length + demand_length - len(edges) - 1
 
         if self.missing_edge_buffer is not None and nb_missing_indexes > 0:
-            missing_indexes.append(self.missing_edge_buffer)
-            indexes.add(self.missing_edge_buffer)
+            new_edge = translate(self.missing_edge_buffer)
+            missing_edges.append(untranslate(new_edge))
+            self.graph.add_edge(*new_edge)
 
         # # Initialize random generator with the class seed
         gn = self.random
-        all_indexes = {(i, j) for i in range(supply_length) for j in range(demand_length)}
+        all_edge = {translate((i, j)) for i in range(supply_length) for j in range(demand_length)}
 
-        # Shuffle the edges randomly
-        shuffled_indexes = list(all_indexes - indexes)
-        gn.shuffle(shuffled_indexes)
+        # list possible indexes to add
+        possible_edges = all_edge - edges
 
-        # Sort the shuffled edges by cost
-        sorted_indexes = sorted(shuffled_indexes, key=lambda x: self.costs[x])
+        # add weights to the possible indexes
+        possible_edges = [(*_edge, self.costs[untranslate(_edge)] + gn.random()) for _edge in possible_edges]
 
-        # add the missing edges without creating a cycle
-        graph = Graph(self.graph)
-        # add the indexes we already have
-        graph.add_edges_from(map(translate, indexes))
-        for index in sorted_indexes:
-            if len(missing_indexes) == nb_missing_indexes:
+        # make a generator of edges wich connect the graph
+        gen = nx.k_edge_augmentation(self.graph, 1, possible_edges)
+
+        for edge in gen:
+            if len(missing_edges) == nb_missing_indexes:
                 break
-            edge = translate(index)
-            graph.add_edge(*edge)
-            if not graph.has_cycle():
-                missing_indexes.append(index)
-            else:
-                graph.remove_edge(*edge)
+            missing_edges.append(untranslate(edge))
 
-        if len(missing_indexes) != nb_missing_indexes:
+        if len(missing_edges) != nb_missing_indexes:
             raise ValueError("Error in the missing edges allocation")
 
-        return missing_indexes
+        return missing_edges
 
     def potentials(self) -> tuple[list[int], list[int]]:
         if self.graph.is_degenerate():
@@ -477,7 +472,7 @@ class TransportationTable:
                     self.stepping_stone(cycle)
                 else:
                     # add the missing edges until the graph is connected
-                    edges = self._get_missing_indexes(self._get_indexes())
+                    edges = self._get_missing_indexes()
                     self.graph.add_edges_from(map(translate, edges))
             # Step 3 : Compute the marginal costs
             marginal_costs = self.marginal_costs
@@ -590,11 +585,12 @@ if __name__ == "__main__":
         print(f"Test {i}")
         with open(f"data/{i}.txt", "r") as f:
             table = TransportationTable.from_file(f)
-        table.BalasHammer()
+        table.BalasHammerOptimized()
         table.show(table.transportation_table)
         costs_nordwest[i] = table.total_cost
 
     test_transportation_table(9)
+    print("total cost: ", costs_nordwest)
 
     # assert costs_nordwest == {1: 3000, 2: 2000, 3: 33000, 4: 12700, 5: 445, 6: 2880, 7: 16000, 8: 17600, 9: 5700, 10: 54000, 11: 279150, 12: 154400}
     # print("Nordwest algorithm is working")
