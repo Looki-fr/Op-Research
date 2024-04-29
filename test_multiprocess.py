@@ -10,12 +10,12 @@ def generate_problem(n, m):
     matrix = Matrix(n, m)
     for i in range(n):
         for j in range(m):
-            matrix[Index(i, j)] = randint(1, 100)
+            matrix[(i, j)] = randint(1, 100)
     problem.costs = matrix
     temp = Matrix(n, m)
     for i in range(n):
         for j in range(m):
-            temp[Index(i, j)] = randint(1, 100)
+            temp[(i, j)] = randint(1, 100)
     problem.supply = [sum(temp.rows[i]) for i in range(n)]
     problem.demand = [sum(temp.cols[j]) for j in range(m)]
     if sum(problem.supply) != sum(problem.demand):
@@ -32,7 +32,7 @@ def worker(i):
 
 
 if __name__ == "__main__":
-    with Pool(cpu_count()) as p:
-        p.map(worker, range(100))
+    with Pool(4) as p:
+        p.map(worker, range(100), chunksize=1)
     print("Average times:\n - ", end="")
     print(*[f"{k}: {round(v * 1000, 3)} ms (" + str(len(Timer.timedict[k])) + ")" for k, v in Timer.average_times.items()], sep="\n - ")

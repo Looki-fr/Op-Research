@@ -8,10 +8,12 @@ import string
 from random import Random, shuffle
 import time
 from timer import Timer
+import networkx as nx
+from networkx.classes import Graph as nxGraph
 
 
 # def char_map(x): return char_map(x // 26) + string.ascii_lowercase[x % 26] if x // 26 else string.ascii_lowercase[x]
-def char_map(x): return x
+def char_map(x): return x + 1
 
 
 class BadFormat(Exception):
@@ -176,7 +178,6 @@ class TransportationTable:
         self.transportation_table = Matrix(0, 0)
 
     @property
-    @Timer.timeit
     def marginal_costs(self) -> Matrix:
         s, t = self.potentials()
         potentials = Matrix(self.costs.rows_size, self.costs.cols_size)
@@ -253,7 +254,7 @@ class TransportationTable:
         index = [f"S_{i + 1}" for i in range(len(self.supply))] + [col_name]
         print(tabulate(table, tablefmt="fancy_grid", showindex=index, headers=headers))
 
-    @Timer.timeit
+    @Timer.timeit_with_name("0_nw")
     def NorthWestCorner(self) -> None:
         # create a matrix with the same dimension
         matrix = Matrix(len(self.supply), len(self.demand))
@@ -312,7 +313,6 @@ class TransportationTable:
                     raise ValueError("Error in the new indexes allocation")
         return missing_edges
 
-    @Timer.timeit
     def _missing_edges_slow(self, indexes: list[tuple[int, int]]) -> None:
         missing_edges = []
         indexes = indexes.copy()
@@ -338,7 +338,6 @@ class TransportationTable:
             raise ValueError("Error in the missing edges allocation")
         return missing_edges
 
-    @Timer.timeit
     def _missing_edges(self, indexes: list[tuple[int, int]]) -> None:
         missing_edges = []
         indexes = set(indexes)  # Convert to set for faster membership check
@@ -374,7 +373,6 @@ class TransportationTable:
 
         return missing_edges
 
-    @Timer.timeit
     def potentials(self) -> tuple[list[int], list[int]]:
         size = len(self.supply) + len(self.demand)
         # potentials are binds by the following equation
@@ -416,14 +414,15 @@ class TransportationTable:
             print("Doublon in indexes : ", len(set(indexes)) != len(indexes))
             print("Graph is degenerate : ", g.is_degenerate())
             print("Actual transport table : ")
-            self.show(self.transportation_table)
+            print("Buffer : ", self.missing_edge_buffer)
+            # self.show(self.transportation_table)
             raise ValueError("The system of equations is not solvable")
         # assign the values to the potentials
         s = [*map(int, res[:len(self.supply)])]
         t = [*map(int, res[len(self.supply):])]
         return (s, t)
 
-    @Timer.timeit
+    @Timer.timeit_with_name("0_bh")
     def BalasHammer(self) -> None:
         supply = self.supply.copy()
         demand = self.demand.copy()
@@ -506,22 +505,23 @@ class TransportationTable:
             graph.edges.append(Edge(p, o, self.transportation_table[index], index))
         return graph
 
-    @Timer.timeit
     def optimize(self) -> bool:
         # check if there is a cycle in the actual proposition
         first = True
         nb_iter = 0
+
+        # Step 2 : Check if the graph has a cycle and remove it
+        # ? isn't mandatory to do at each iteration
+        graph = self.get_graph()
+        cycle = graph.has_cycle()
+        if cycle:
+            self.stepping_stone(cycle)
+            graph = self.get_graph()
+
         while True:
-            print("Iteration", nb_iter)
             nb_iter += 1
             # Step 1 : Randomize the seed to get a different result each iteration and avoid getting stuck in a loop
             self.seed = time.time()
-            # Step 2 : Check if the graph has a cycle and remove it
-            graph = self.get_graph()
-            cycle = graph.has_cycle()
-            if cycle:
-                self.stepping_stone(cycle)
-                graph = self.get_graph()
             # Step 3 : Compute the marginal costs
             marginal_costs = self.marginal_costs
             min_mcost = min(marginal_costs)
@@ -547,7 +547,6 @@ class TransportationTable:
             # optimize the table
             delta = self.stepping_stone(cycle)
             if delta == 0:
-                #!print("The cost didn't change")
                 self.missing_edge_buffer = index
             else:
                 self.missing_edge_buffer = None
@@ -579,19 +578,20 @@ class TransportationTable:
                 self.transportation_table[edge.matrix_index] -= delta
         return delta
 
-    @Timer.timeit
     def NordWestOptimized(self):
         self.NorthWestCorner()
+        t1 = Timer.get_time()
         self.optimize()
+        Timer.time(t1, "t_nw")
 
-    @Timer.timeit
     def BalasHammerOptimized(self):
         self.BalasHammer()
-        print("BalasHammer")
+        t1 = Timer.get_time()
         self.optimize()
+        Timer.time(t1, "t_bh")
 
 
-class Graph:
+class Graph(nxGraph):
 
     def __init__(self) -> None:
         self.states: set[State] = set()
@@ -622,7 +622,6 @@ class Graph:
     def is_degenerate(self) -> bool:
         return len(self.edges) < len(self.states) - 1 or bool(self.has_cycle())
 
-    @Timer.timeit
     def has_cycle(self) -> Union[list['Edge'], bool]:
         # Check if there is a cycle in the graph
         # edges aren't directed when checking for cycles
@@ -737,25 +736,23 @@ class Edge(tuple[State, State, int]):
 
 if __name__ == "__main__":
 
+    costs_nordwest = {}
+    costs_balas = {}
+    costs_test = {}
+
     def test_transportation_table(i):
         print(f"Test {i}")
-        with open(f"data/test{i}.txt", "r") as f:
+        with open(f"data/{i}.txt", "r") as f:
             table = TransportationTable.from_file(f)
-        print("Costs matrix :")
-        table.show(table.costs)
-        print("Balas algorithm :")
-        table.NorthWestCorner()
-        table.show(table.transportation_table)
-        print("Total cost : ", table.total_cost)
-        row, col = table.potentials()
-        print("Marginal costs and potentials :")
-        table.show(table.marginal_costs, row, col, "potentials", "potentials")
-        # table.get_graph().display()
-        print("Optimizing the transportation table...")
-        if table.optimize():
-            print("Optimized transportation table :")
-            table.show(table.transportation_table)
-            print(f"Total cost : {table.total_cost}")
+        table.BalasHammerOptimized()
+        costs_balas[i] = table.total_cost
+        table.NordWestOptimized()
+        costs_nordwest[i] = table.total_cost
 
-    for i in range(100):
-        test_transportation_table(2)
+    for i in range(1, 13):
+        test_transportation_table(i)
+
+    assert costs_nordwest == {1: 3000, 2: 2000, 3: 33000, 4: 12700, 5: 445, 6: 2880, 7: 16000, 8: 17600, 9: 5700, 10: 54000, 11: 279150, 12: 154400}
+    print("Nordwest algorithm is working")
+    assert costs_balas == {1: 3000, 2: 2000, 3: 33000, 4: 12700, 5: 445, 6: 2880, 7: 16000, 8: 17600, 9: 5700, 10: 54000, 11: 279150, 12: 154400}
+    print("Balas algorithm is working")
