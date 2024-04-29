@@ -484,6 +484,7 @@ class TransportationTable:
             min_mcost = min(marginal_costs)
             # Step 4 : Check if the table is optimized or not with the minimum marginal cost
             if min_mcost >= 0:
+                self._graph = None
                 return first
             # Step 5 : Add the edge with the minimum marginal cost to the graph and use the stepping stone method
             index = marginal_costs.index(min_mcost)
