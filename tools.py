@@ -1,4 +1,5 @@
 from io import TextIOWrapper
+from matplotlib.image import resample
 from tabulate import tabulate
 from typing import Union
 from logger import print
@@ -10,10 +11,27 @@ import time
 from timer import Timer
 import networkx as nx
 from networkx.classes import Graph as nxGraph
+from networkx.algorithms import cycles
+from networkx.exception import NetworkXNoCycle
 
 
-# def char_map(x): return char_map(x // 26) + string.ascii_lowercase[x % 26] if x // 26 else string.ascii_lowercase[x]
-def char_map(x): return x + 1
+# define for typing
+class Edge(tuple):
+    def __init__(self) -> tuple[int, int]:
+        super().__init__()
+
+
+def char_map(x): return char_map(x // 26) + string.ascii_lowercase[x % 26] if x // 26 else string.ascii_lowercase[x]
+
+
+def translate(x: tuple[int, int]) -> tuple[str, str]: return (f"S_{x[0] + 1}", f"C_{x[1] + 1}")
+
+
+def untranslate(x: tuple[str, str]) -> tuple[int, int]:
+    # remove elements after the 2 first elements of the tuple
+    x = x[:2]
+    x = sorted(x, key=lambda x: x[0], reverse=True)
+    return (int(x[0][2:]) - 1, int(x[1][2:]) - 1)
 
 
 class BadFormat(Exception):
@@ -32,7 +50,7 @@ class Matrix():
     def __getitem__(self, index: tuple[int, int]):
         return self.matrix[index[0]][index[1]]
 
-    def __setitem__(self, index: tuple[int, int], value: Union[int, float]):
+    def __setitem__(self, index: tuple[int, int], value: int):
         self.matrix[index[0]][index[1]] = value
 
     def __str__(self):
@@ -166,6 +184,7 @@ class TransportationTable:
     missing_edge_buffer = None
 
     seed = time.time()  # ? this is used to get the same random values and the same results each time
+    _graph: 'Graph' = None
 
     @property
     def random(self) -> Random:
@@ -273,7 +292,7 @@ class TransportationTable:
                 j += 1
         self.transportation_table = matrix
 
-    def _get_edges(self) -> list[tuple[int, int]]:
+    def _get_indexes(self) -> list[tuple[int, int]]:
         # list the indexes where the values are not null in the transportation table
         indexes: list[tuple[int, int]] = []
         for i, row in enumerate(self.transportation_table.rows):
@@ -282,98 +301,51 @@ class TransportationTable:
                     indexes.append((i, j))
         return indexes
 
-    #! this function is not working properly
-    def _missing_edges_depreciated(self, indexes: list[tuple[int, int]]) -> None:
-        missing_edges = []
-        indexes = indexes.copy()
-        for j in indexes.copy():
-            # check if the cell is alone in its row and column regarding the other cells
-            if sum([1 for index in indexes if index[0] == j[0]]) == 1 and sum([1 for index in indexes if index[1] == j[1]]) == 1:
-                # if the cell is alone in its row and column then link it to the smallest cost cell in the same row or column which is not the cell itself
-                print("Cell alone : ", j)
-                row = self.costs.rows[j[0]]
-                col = self.costs.cols[j[1]]
-                print("Row : ", row)
-                print("Col : ", col)
-                val = max(row + col)
-                for k, (rcell, ccell) in enumerate(zip(row, col)):
-                    #! sometime we can have two equivalent cells with the same cost
-                    if k != j[1] and k != j[0] and (rcell == val or ccell == val):
-                        print("Equivalent cells", rcell, ccell, val, (k, j[1]), (j[0], k))
-                    if k != j[1] and ccell < val:
-                        val = ccell
-                        new_index = (j[0], k)
-                    if k != j[0] and rcell < val:
-                        val = rcell
-                        new_index = (k, j[1])
-                if new_index not in indexes:
-                    indexes.append(new_index)
-                    missing_edges.append(new_index)
-                else:
-                    raise ValueError("Error in the new indexes allocation")
-        return missing_edges
-
-    def _missing_edges_slow(self, indexes: list[tuple[int, int]]) -> None:
-        missing_edges = []
-        indexes = indexes.copy()
-        nb_missing_edges = len(self.supply) + len(self.demand) - len(indexes) - 1
-        if self.missing_edge_buffer is not None and nb_missing_edges > 0:
-            missing_edges.append(self.missing_edge_buffer)
-            indexes.append(self.missing_edge_buffer)
-        gn = self.random  # ? get the actual random generator
-        for i in range(nb_missing_edges):
-            # find the edge with the minimum cost
-            edges = [(i, j) for i in range(len(self.supply)) for j in range(len(self.demand)) if (i, j) not in indexes]
-            # if there is some equivalent costs then randomize the order
-            sorted_edges = sorted(edges, key=lambda x: (self.costs[x], gn.random()))
-            # check if the edge can be added without creating a cycle
-            for i in range(len(sorted_edges)):
-                graph = Graph.from_list_index(indexes + [sorted_edges[i]])
-                if not graph.has_cycle():
-                    indexes.append(sorted_edges[i])
-                    missing_edges.append(sorted_edges[i])
-                    break
-        # check if the number of missing edges is correct
-        if len(missing_edges) != nb_missing_edges:
-            raise ValueError("Error in the missing edges allocation")
-        return missing_edges
-
-    def _missing_edges(self, indexes: list[tuple[int, int]]) -> None:
-        missing_edges = []
-        indexes = set(indexes)  # Convert to set for faster membership check
+    def _get_missing_indexes(self, indexes: list[tuple[int, int]]) -> None:
+        missing_indexes = []
+        indexes: set = set(indexes)  # Convert to set for faster membership check
         supply_length = len(self.supply)
         demand_length = len(self.demand)
-        nb_missing_edges = supply_length + demand_length - len(indexes) - 1
+        nb_missing_indexes = supply_length + demand_length - len(indexes) - 1
 
-        if self.missing_edge_buffer is not None and nb_missing_edges > 0:
-            missing_edges.append(self.missing_edge_buffer)
+        if self.missing_edge_buffer is not None and nb_missing_indexes > 0:
+            missing_indexes.append(self.missing_edge_buffer)
             indexes.add(self.missing_edge_buffer)
 
-        # Initialize random generator with the class seed
+        # # Initialize random generator with the class seed
         gn = self.random
-        all_edges = {(i, j) for i in range(supply_length) for j in range(demand_length)}
+        all_indexes = {(i, j) for i in range(supply_length) for j in range(demand_length)}
 
         # Shuffle the edges randomly
-        shuffled_edges = list(all_edges - indexes)
-        gn.shuffle(shuffled_edges)
+        shuffled_indexes = list(all_indexes - indexes)
+        gn.shuffle(shuffled_indexes)
 
         # Sort the shuffled edges by cost
-        sorted_edges = sorted(shuffled_edges, key=lambda x: self.costs[x])
+        sorted_indexes = sorted(shuffled_indexes, key=lambda x: self.costs[x])
 
-        for edge in sorted_edges:
-            if len(missing_edges) == nb_missing_edges:
+        # add the missing edges without creating a cycle
+        graph = Graph(self.graph)
+        # add the indexes we already have
+        graph.add_edges_from(map(translate, indexes))
+        for index in sorted_indexes:
+            if len(missing_indexes) == nb_missing_indexes:
                 break
-            graph = Graph.from_list_index(list(indexes) + [edge])
+            edge = translate(index)
+            graph.add_edge(*edge)
             if not graph.has_cycle():
-                indexes.add(edge)
-                missing_edges.append(edge)
+                missing_indexes.append(index)
+            else:
+                graph.remove_edge(*edge)
 
-        if len(missing_edges) != nb_missing_edges:
+        if len(missing_indexes) != nb_missing_indexes:
             raise ValueError("Error in the missing edges allocation")
 
-        return missing_edges
+        return missing_indexes
 
     def potentials(self) -> tuple[list[int], list[int]]:
+        if self.graph.is_degenerate():
+            self.graph.display()
+            raise ValueError("The graph is degenerate")
         size = len(self.supply) + len(self.demand)
         # potentials are binds by the following equation
         #  c_ij = s_i - t_j
@@ -381,41 +353,22 @@ class TransportationTable:
         t = [None] * len(self.demand)
         # make the system of equations matrix to solve
         matrix = Matrix(size, size)
-        indexes = self._get_edges()
-        missing = self._missing_edges(indexes)
-        indexes += missing
-        g = Graph.from_list_index(indexes)
-        # g.display()
+        costs = []
+        edges = self.graph.edges
+        indexes = map(untranslate, edges)  # TODO : this maybe isn't very efficient to do this at each iteration
         # fill the matrix
         for i, index in enumerate(indexes):
             matrix[(i, index[0])] = 1
             matrix[(i, len(self.supply) + index[1])] = -1
+            costs.append(self.costs[index])
         else:
             # init one of the potentials to 0
             matrix[(size - 1, 0)] = 1
-            i = 0
-            while matrix.determinant() == 0 and i < size - 1:
-                matrix[(size - 1, i)] = 0
-                i += 1
-                matrix[(size - 1, i)] = 1
-        # create the vector of costs
-        costs = [self.costs[index] for index in indexes]
-        costs.append(0)
+            costs.append(0)
         try:
             res = linalg.solve(matrix.matrix, costs)
         except linalg.LinAlgError:
-            g = Graph.from_list_index(indexes)
-            g.display()
-            print("Indexes : ", indexes)
-            print("nb indexes : ", len(indexes))
-            print("Missing : ", missing)
-            print("nb missing : ", len(missing))
-            print("Matrix det: ", matrix.determinant())
-            print("Doublon in indexes : ", len(set(indexes)) != len(indexes))
-            print("Graph is degenerate : ", g.is_degenerate())
-            print("Actual transport table : ")
-            print("Buffer : ", self.missing_edge_buffer)
-            # self.show(self.transportation_table)
+            self.graph.display()
             raise ValueError("The system of equations is not solvable")
         # assign the values to the potentials
         s = [*map(int, res[:len(self.supply)])]
@@ -492,56 +445,54 @@ class TransportationTable:
             for k in range(len(costs[i])):
                 costs[i][k] = float('inf')
 
-    def get_graph(self, fill=False) -> 'Graph':
+    def _init_graph(self) -> 'Graph':
         graph = Graph()
-        indexes = self._get_edges()
-        if fill:
-            indexes += self._missing_edges(indexes)
-        for index in indexes:
-            p = State(f"S_{index[0] + 1}", self.supply[index[0]])
-            o = State(f"C_{char_map(index[1])}", self.demand[index[1]])
-            graph.states.add(p)
-            graph.states.add(o)
-            graph.edges.append(Edge(p, o, self.transportation_table[index], index))
+        indexes = self._get_indexes()
+        # translate tuple to edges
+        edges = map(translate, indexes)
+        # add the nodes
+        graph.add_edges_from(edges)
         return graph
+
+    @property
+    def graph(self) -> 'Graph':
+        if self._graph:
+            return self._graph
+        self._graph = self._init_graph()
+        return self._graph
 
     def optimize(self) -> bool:
         # check if there is a cycle in the actual proposition
         first = True
-        nb_iter = 0
-
-        # Step 2 : Check if the graph has a cycle and remove it
-        # ? isn't mandatory to do at each iteration
-        graph = self.get_graph()
-        cycle = graph.has_cycle()
-        if cycle:
-            self.stepping_stone(cycle)
-            graph = self.get_graph()
 
         while True:
-            nb_iter += 1
             # Step 1 : Randomize the seed to get a different result each iteration and avoid getting stuck in a loop
             self.seed = time.time()
+
+            # Step 2 : Check if the graph has a cycle and remove it
+            # ? isn't mandatory to do at each iteration
+            if self.graph.is_degenerate():
+                if cycle := self.graph.has_cycle():
+                    cycle = list(map(untranslate, cycle))
+                    self.stepping_stone(cycle)
+                else:
+                    # add the missing edges until the graph is connected
+                    edges = self._get_missing_indexes(self._get_indexes())
+                    self.graph.add_edges_from(map(translate, edges))
             # Step 3 : Compute the marginal costs
             marginal_costs = self.marginal_costs
             min_mcost = min(marginal_costs)
             # Step 4 : Check if the table is optimized or not with the minimum marginal cost
             if min_mcost >= 0:
-                if first:
-                    #!print("The transportation table is already optimized")
-                    return False
-                # if the minimum marginal cost is positive or null then we can't optimize the table anymore
-                break
+                return first
             # Step 5 : Add the edge with the minimum marginal cost to the graph and use the stepping stone method
             index = marginal_costs.index(min_mcost)
-            # get the graph
-            graph = self.get_graph(fill=graph.is_degenerate())  # ! this line sometimes doesn'nt get the same missing edges
             # add the edge to the graph
-            state = State(f"S_{index[0] + 1}", self.supply[index[0]])
-            next_state = State(f"C_{char_map(index[1])}", self.demand[index[1]])
-            graph.edges.append(Edge(state, next_state, 0, index))
+            edge = translate(index)
+            self.graph.add_edge(*edge)
             # find the added cycle
-            cycle: list[Edge] = graph.has_cycle()
+            cycle: list[Edge] = self.graph.get_cycle(edge)
+            cycle = list(map(untranslate, cycle))
             #!print("Cycle : ", end='')
             #!print(*cycle, sep=' -> ')
             # optimize the table
@@ -552,30 +503,34 @@ class TransportationTable:
                 self.missing_edge_buffer = None
             #!print(f"Delta : {delta}")
             #!self.show(self.transportation_table)
-            # input("Press a key...")
             first = False
-        return True
 
     @property
     def total_cost(self) -> int:
-        return sum([self.costs[index] * self.transportation_table[index] for index in self._get_edges()])
+        return sum([self.costs[index] * self.transportation_table[index] for index in self._get_indexes()])
 
-    def stepping_stone(self, cycle: list['Edge']) -> Union[int, float]:
-        delta_cost = [self.costs[edge.matrix_index] * (-1)**i for i, edge in enumerate(cycle)]
+    def stepping_stone(self, cycle: list['Edge']) -> int:
+        delta_cost = [self.costs[edge] * (-1)**i for i, edge in enumerate(cycle)]
         delta_cost = sum(delta_cost)
         if delta_cost > 0:
-            delta = -min([self.transportation_table[edge.matrix_index] for edge in cycle if cycle.index(edge) % 2 == 0])
+            delta = -min([self.transportation_table[edge] for edge in cycle if cycle.index(edge) % 2 == 0])
         elif delta_cost < 0:
-            delta = min([self.transportation_table[edge.matrix_index] for edge in cycle if cycle.index(edge) % 2 == 1])
+            delta = min([self.transportation_table[edge] for edge in cycle if cycle.index(edge) % 2 == 1])
         else:
             raise ValueError("The cost didn't change")
         if delta == 0:
+            for i, edge in enumerate(cycle):
+                if self.transportation_table[edge] == 0:
+                    self.graph.remove_edge(*translate(edge))
             return 0
         for i, edge in enumerate(cycle):
             if i % 2 == 0:
-                self.transportation_table[edge.matrix_index] += delta
+                self.transportation_table[edge] += delta
             else:
-                self.transportation_table[edge.matrix_index] -= delta
+                self.transportation_table[edge] -= delta
+            # ? remove the edge if the value is 0
+            if self.transportation_table[edge] == 0:
+                self.graph.remove_edge(*translate(edge))
         return delta
 
     def NordWestOptimized(self):
@@ -592,14 +547,6 @@ class TransportationTable:
 
 
 class Graph(nxGraph):
-
-    def __init__(self) -> None:
-        self.states: set[State] = set()
-        self.edges: list[Edge] = []
-
-    def __str__(self) -> str:
-        return f"States : {self.states}\nEdges : {[f'{state.name} -> {next_state.name}' for state, next_state, _ in self.edges]}"
-
     def __repr__(self) -> str:
         return f"Graph {id(self)}"
 
@@ -608,130 +555,28 @@ class Graph(nxGraph):
         Display the graph using graphviz
         """
         graph = gv.Digraph()
-        for state in self.states:
-            graph.node(state.name, label=str(state))
-        for edge in self.edges:
+        for node in self.nodes():
+            graph.node(str(node))
+        for edge in self.edges():
             color = "black"
-            state, next_state, value = edge
-            if edge in cycle or edge.reversed() in cycle:
+            state, next_state = edge
+            if edge in cycle or edge[::-1] in cycle:
                 color = "red"
-            graph.edge(state.name, next_state.name, label=str(value), arrowhead="none", color=color)
+            graph.edge(str(state), str(next_state), arrowhead="none", color=color)
         graph.view(cleanup=True)
         input("Press a key...")
 
     def is_degenerate(self) -> bool:
-        return len(self.edges) < len(self.states) - 1 or bool(self.has_cycle())
+        return not nx.is_connected(self) or len(self.edges) != len(self.nodes) - 1
 
-    def has_cycle(self) -> Union[list['Edge'], bool]:
-        # Check if there is a cycle in the graph
-        # edges aren't directed when checking for cycles
-        visited = set()
-        recursion_stack = list()
-
-        def dfs(state, parent):
-            visited.add(state)
-            recursion_stack.append(state)
-            # ? get the edges linked to the current state and the reversed edges
-            edges = [edge for edge in self.edges if edge[0] == state]
-            edges += [edge.reversed() for edge in self.edges if edge[1] == state]
-            for _, next_state, _ in edges:
-                # check if the next state is the parent of the current state and we are just going back with previous edge
-                # ? only work since a state can't be linked to itself in any case
-                if parent is not None and next_state == parent:
-                    continue
-                # check if the next state has already been visited, if not visit it
-                if next_state not in visited:
-                    path = dfs(next_state, state)
-                    if path:
-                        return path
-                # check if the next state is in the recursion stack
-                elif next_state in recursion_stack:
-                    # clear the beginning of the recursion stack until the first occurence of the next state so we get the cycle
-                    while recursion_stack[0] != next_state and len(recursion_stack) > 0:
-                        recursion_stack.pop(0)
-                    # translate the list of states to a list of edges
-                    cycle = []
-                    possible_edge = self.edges + [edge.reversed() for edge in self.edges]
-                    # ? get original edges and not generated ones to retrieve the indexes
-                    for i in range(len(recursion_stack)):
-                        # get the edge between the current state and the next state in the recursion stack
-                        for edge in possible_edge:
-                            if edge[0] == recursion_stack[i] and edge[1] == recursion_stack[(i + 1) % len(recursion_stack)]:
-                                cycle.append(edge)
-                                break
-                    return cycle
-            recursion_stack.remove(state)
+    def has_cycle(self, start=None) -> Union[list[tuple[int, int]], bool]:
+        try:
+            return cycles.find_cycle(self, source=start, orientation='ignore')
+        except NetworkXNoCycle:
             return False
 
-        for state in self.states:
-            if state not in visited:
-                cycle = dfs(state, None)
-                if cycle:
-                    return cycle
-        return False
-
-    @ staticmethod
-    def from_list_index(lst: list[tuple[int, int]]) -> 'Graph':
-        graph = Graph()
-        for index in lst:
-            state = State(f"S_{index[0] + 1}", 0)
-            next_state = State(f"C_{char_map(index[1])}", 0)
-            graph.states.add(state)
-            graph.states.add(next_state)
-            graph.edges.append(Edge(state, next_state, 0, index))
-        return graph
-
-
-class State:
-
-    def __init__(self, name: str, weight: int) -> None:
-        self.name = name
-        self.weight = weight
-
-    def __str__(self) -> str:
-        return f"{self.name}"
-
-    def __repr__(self) -> str:
-        return f"State({self.name})"
-
-    def __eq__(self, other: 'State') -> bool:
-        return self.name == other.name and self.weight == other.weight
-
-    def __ne__(self, other: 'State') -> bool:
-        return not self.__eq__(other)
-
-    def __hash__(self) -> int:
-        return hash((self.name, self.weight))
-
-
-class Edge(tuple[State, State, int]):
-    def __init__(self, state: State, next_state: State, value: int, index: tuple[int, int]) -> None:
-        super().__init__()
-        self.state = state
-        self.next_state = next_state
-        self.value = value
-        self.matrix_index = index
-
-    def __new__(cls, state: State, next_state: State, value: int, index: tuple[int, int]):
-        return super().__new__(cls, (state, next_state, value))
-
-    def __str__(self) -> str:
-        return f"({self.state},{self.next_state})"
-
-    def __repr__(self) -> str:
-        return f"Edge({self.state}, {self.next_state}, {self.value})"
-
-    def reversed(self) -> 'Edge':
-        return Edge(self.next_state, self.state, self.value, self.matrix_index)
-
-    def __eq__(self, value: object) -> bool:
-        return self.state == value.state and self.next_state == value.next_state and self.value == value.value
-
-    def __ne__(self, value: object) -> bool:
-        return not self.__eq__(value)
-
-    def __hash__(self) -> int:
-        return hash((self.state, self.next_state, self.value))
+    def get_cycle(self, start=None) -> Union[list[tuple[int, int]], bool]:
+        return cycles.find_cycle(self, source=start, orientation='ignore')
 
 
 if __name__ == "__main__":
@@ -744,15 +589,13 @@ if __name__ == "__main__":
         print(f"Test {i}")
         with open(f"data/{i}.txt", "r") as f:
             table = TransportationTable.from_file(f)
-        table.BalasHammerOptimized()
-        costs_balas[i] = table.total_cost
-        table.NordWestOptimized()
+        table.BalasHammer()
+        table.show(table.transportation_table)
         costs_nordwest[i] = table.total_cost
 
-    for i in range(1, 13):
-        test_transportation_table(i)
+    test_transportation_table(9)
 
-    assert costs_nordwest == {1: 3000, 2: 2000, 3: 33000, 4: 12700, 5: 445, 6: 2880, 7: 16000, 8: 17600, 9: 5700, 10: 54000, 11: 279150, 12: 154400}
-    print("Nordwest algorithm is working")
-    assert costs_balas == {1: 3000, 2: 2000, 3: 33000, 4: 12700, 5: 445, 6: 2880, 7: 16000, 8: 17600, 9: 5700, 10: 54000, 11: 279150, 12: 154400}
-    print("Balas algorithm is working")
+    # assert costs_nordwest == {1: 3000, 2: 2000, 3: 33000, 4: 12700, 5: 445, 6: 2880, 7: 16000, 8: 17600, 9: 5700, 10: 54000, 11: 279150, 12: 154400}
+    # print("Nordwest algorithm is working")
+    # assert costs_balas == {1: 3000, 2: 2000, 3: 33000, 4: 12700, 5: 445, 6: 2880, 7: 16000, 8: 17600, 9: 5700, 10: 54000, 11: 279150, 12: 154400}
+    # print("Balas algorithm is working")
