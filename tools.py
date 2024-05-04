@@ -1,7 +1,7 @@
 from io import TextIOWrapper
 from tabulate import tabulate
 from typing import Union
-from logger import print, vprint
+from logger import RESET, print, vprint, UNDERLINE
 from numpy import linalg
 import graphviz as gv
 import string
@@ -296,6 +296,7 @@ class TransportationTable:
 
     @Timer.timeit_with_name("0_nw")
     def NorthWestCorner(self) -> None:
+        vprint("North-West corner method")
         # create a matrix with the same dimension
         matrix = Matrix(len(self.supply), len(self.demand))
         supply, demand = self.supply.copy(), self.demand.copy()
@@ -312,6 +313,8 @@ class TransportationTable:
             if demand[j] == 0:
                 j += 1
         self.transportation_table = matrix
+        vprint("Transportation table :")
+        self.show(matrix, verbose=True)
 
     def _get_indexes(self) -> list[tuple[int, int]]:
         # list the indexes where the values are not null in the transportation table
@@ -392,16 +395,24 @@ class TransportationTable:
 
     @Timer.timeit_with_name("0_bh")
     def BalasHammer(self) -> None:
+        vprint(UNDERLINE + "Balas-Hammer method" + RESET)
         supply = self.supply.copy()
         demand = self.demand.copy()
         costs = self.costs.copy().matrix
         allocations = Matrix(self.costs.rows_size, self.costs.cols_size)
         while sum(supply) > 0 and sum(demand) > 0:
             penalties = self.penalties(supply, demand, costs)
+            vprint("Penalties :")
+            vprint(*penalties, sep='\n')
             edge = self.choose_edge_to_fill(penalties, costs, allocations, supply, demand)
+            vprint("Edge to fill : ", edge)
             if edge is None:
+                vprint("No edge to fill")
+                vprint("End of the Balas-Hammer method")
                 break
             self.fill_edge(allocations, edge, supply, demand, costs)
+            vprint("Updated transportation table :")
+            self.show(allocations, verbose=True)
         self.transportation_table = allocations
 
     def penalties(self, supply, demand, costs) -> list[tuple[int, int, str]]:
@@ -481,44 +492,54 @@ class TransportationTable:
         first = True
 
         while True:
-            vprint("Iteration", n := 1 if first else n + 1)
+            vprint(UNDERLINE + "Iteration", str(n := 1 if first else n + 1) + RESET)
             # Step 1 : Randomize the seed to get a different result each iteration and avoid getting stuck in a loop
             self.seed = time.time()
 
             # Step 2 : Check if the graph has a cycle and remove it
             if self.graph.is_degenerate():
+                vprint("The graph is degenerate")
                 if cycle := self.graph.has_cycle():
                     cycle = list(map(untranslate, cycle))
                     self.stepping_stone(cycle)
+                    vprint("Removing cycle : ", end='')
                 else:
                     # add the missing edges until the graph is connected
                     edges = self._get_missing_indexes()
                     self.graph.add_edges_from(map(translate, edges))
+                    vprint("The graph is not connected")
+                    vprint("Added edges : ", *edges)
             # Step 3 : Compute the marginal costs
             marginal_costs = self.marginal_costs
+            vprint("Marginal costs :")
+            self.show(marginal_costs, verbose=True)
             min_mcost = min(marginal_costs)
+            vprint(f"Minimum marginal cost : {min_mcost}")
             # Step 4 : Check if the table is optimized or not with the minimum marginal cost
             if min_mcost >= 0:
                 self._graph = None
+                vprint("The table is optimized")
                 return first
             # Step 5 : Add the edge with the minimum marginal cost to the graph and use the stepping stone method
             index = marginal_costs.index(min_mcost)
             # add the edge to the graph
             edge = translate(index)
             self.graph.add_edge(*edge)
+            vprint(f"Added edge : {edge}")
             # find the added cycle
             cycle: list[Edge] = self.graph.get_cycle(edge)
             cycle = list(map(untranslate, cycle))
-            #!print("Cycle : ", end='')
-            #!print(*cycle, sep=' -> ')
+            vprint("Cycle : ", end='')
+            vprint(*cycle, sep=' -> ')
             # optimize the table
             delta = self.stepping_stone(cycle)
             if delta == 0:
                 self.missing_edge_buffer = index
             else:
                 self.missing_edge_buffer = None
-            #!print(f"Delta : {delta}")
-            #!self.show(self.transportation_table)
+            vprint(f"Delta : {delta}")
+            vprint("Updated transportation table :")
+            self.show(self.transportation_table, verbose=True)
             first = False
 
     @property
