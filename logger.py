@@ -11,24 +11,22 @@ class Settings:
     verbose: bool = False
     debug: bool = False
 
-
-# Colors
-RED = "\033[1;31m"
-GREEN = "\033[1;32m"
-YELLOW = "\033[1;33m"
-BLUE = "\033[1;34m"
-MAGENTA = "\033[1;35m"
-CYAN = "\033[1;36m"
-WHITE = "\033[1;37m"
-BOLD = "\033[1m"
-UNDERLINE = "\033[4m"
-RESET = "\033[0m"
+    # Colors
+    RED = "\033[1;31m"
+    GREEN = "\033[1;32m"
+    YELLOW = "\033[1;33m"
+    BLUE = "\033[1;34m"
+    MAGENTA = "\033[1;35m"
+    CYAN = "\033[1;36m"
+    WHITE = "\033[1;37m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"
+    RESET = "\033[0m"
 
 
 def clear_color():
     """Set colors to empty string."""
-    global RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, BOLD, UNDERLINE, RESET
-    RED = GREEN = YELLOW = BLUE = MAGENTA = CYAN = WHITE = BOLD = UNDERLINE = RESET = ""
+    Settings.RED = Settings.GREEN = Settings.YELLOW = Settings.BLUE = Settings.MAGENTA = Settings.CYAN = Settings.WHITE = Settings.BOLD = Settings.UNDERLINE = Settings.RESET = ""
 
 
 def print(*args, **kwargs):
@@ -58,9 +56,9 @@ def vprint(*args, **kwargs):
     """My custom verbose print() function."""
     if Settings.verbose:
         # add color to verbose print
-        print(BLUE, end="")
+        print(Settings.BLUE, end="")
         _ = print(*args, **kwargs)
-        print(RESET, end="")
+        print(Settings.RESET, end="")
         return _
     else:
         return None

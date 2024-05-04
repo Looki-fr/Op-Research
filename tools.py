@@ -1,7 +1,7 @@
 from io import TextIOWrapper
 from tabulate import tabulate
 from typing import Union
-from logger import RESET, print, vprint, UNDERLINE
+from logger import Settings, clear_color, print, vprint
 from numpy import linalg
 import graphviz as gv
 import string
@@ -395,7 +395,7 @@ class TransportationTable:
 
     @Timer.timeit_with_name("0_bh")
     def BalasHammer(self) -> None:
-        vprint(UNDERLINE + "Balas-Hammer method" + RESET)
+        vprint(Settings.UNDERLINE + "Balas-Hammer method" + Settings.RESET)
         supply = self.supply.copy()
         demand = self.demand.copy()
         costs = self.costs.copy().matrix
@@ -492,7 +492,7 @@ class TransportationTable:
         first = True
 
         while True:
-            vprint(UNDERLINE + "Iteration", str(n := 1 if first else n + 1) + RESET)
+            vprint(Settings.UNDERLINE + "Iteration", str(n := 1 if first else n + 1) + Settings.RESET)
             # Step 1 : Randomize the seed to get a different result each iteration and avoid getting stuck in a loop
             self.seed = time.time()
 
@@ -649,22 +649,33 @@ if __name__ == "__main__":
 
     costs_nordwest = {}
     costs_balas = {}
-    costs_test = {}
+
+    Settings.debug = True
+    Settings.verbose = True
+    Settings.path = Settings.path / "outputs"
+    clear_color()
 
     def test_transportation_table(i):
-        print(f"Test {i}")
         with open(f"data/{i}.txt", "r") as f:
             table = TransportationTable.from_file(f)
-        print("Table :")
+        Settings.outfile = f"test_{i}.txt"
+        print(f"Test {i}")
+        print("Costs :")
         table.display()
-        table.BalasHammer()
-        table.optimize()
+        table.BalasHammerOptimized()
+        costs_balas[i] = table.total_cost
+        print("Transportation table with Balas-Hammer method")
         table.show(table.transportation_table)
-        table.graph.display()
+        print("Total cost : ", table.total_cost)
+        print("\n\n")
+        table.NordWestOptimized()
         costs_nordwest[i] = table.total_cost
+        print("Transportation table with Nord-West corner method")
+        table.show(table.transportation_table)
+        print("Total cost : ", table.total_cost)
 
-    test_transportation_table(9)
-    # print("total cost: ", costs_nordwest)
+    for i in range(1, 13):
+        test_transportation_table(i)
 
     # assert costs_nordwest == {1: 3000, 2: 2000, 3: 33000, 4: 12700, 5: 445, 6: 2880, 7: 16000, 8: 17600, 9: 5700, 10: 54000, 11: 279150, 12: 154400}
     # print("Nordwest algorithm is working")
