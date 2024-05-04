@@ -1,9 +1,8 @@
 from pathlib import Path
 from InquirerPy import inquirer
 from art import *
-from logger import Settings, print
+from logger import Settings, print, clear_color
 from tools import *
-from tabulate import tabulate
 
 styles = ["fancy_grid", "rounded_grid", "mixed_grid"]
 
@@ -55,17 +54,8 @@ if __name__ == '__main__':
         if "Verbose mode" in promt:
             Settings.verbose = True
 
-    # Colors
-    RED = "\033[1;31m" if not Settings.debug else ""
-    GREEN = "\033[1;32m" if not Settings.debug else ""
-    YELLOW = "\033[1;33m" if not Settings.debug else ""
-    BLUE = "\033[1;34m" if not Settings.debug else ""
-    MAGENTA = "\033[1;35m" if not Settings.debug else ""
-    CYAN = "\033[1;36m" if not Settings.debug else ""
-    WHITE = "\033[1;37m" if not Settings.debug else ""
-    BOLD = "\033[1m" if not Settings.debug else ""
-    UNDERLINE = "\033[4m" if not Settings.debug else ""
-    RESET = "\033[0m" if not Settings.debug else ""
+    if Settings.debug:
+        clear_color()
 
     # Menu
     menu_on = True
@@ -84,65 +74,55 @@ if __name__ == '__main__':
 
         print("File chosen : ", file_chosen)
         with open(folder / file_chosen, "r") as file:
-            mygraph = Graph.from_file(file)
-            print("Graph created")
-            mygraph.display(1)
-            # tabulate with the matrix header are the states and rows names are the states
-            table = mygraph.matrix()
-            # convert to list
-            table = list(map(list, table))
-            # put color on numbers
-            for i, row in enumerate(table):
-                table[i] = list(map(lambda x: CYAN + str(x) + RESET if x.__class__ == int else x, row))
-            print(tabulate(table, headers=[RED + BOLD + state.name + RESET for state in mygraph.states], showindex=[RED + BOLD + state.name + RESET for state in mygraph.states], tablefmt="rounded_grid"))
+            table = TransportationTable.from_file(file)
 
-            # create a calander object
-            calander = Calendar(mygraph)
+            # Display the table
+            print("Table :")
+            table.display()
 
-            # make a table with the following columns : rank, state, earliest date, latest date
-            ranks = mygraph.ranks()
-            earliest_dates = calander.earliest_date()
-            latest_dates = calander.latest_date()
-            float_dates = calander.float()
-            free_float_dates = calander.free_float()
-            # order the dictionary by ranks
-            ranks = dict(sorted(ranks.items(), key=lambda item: item[1]))
-            table = [
-                list(ranks.values()),
-                [state.name for state in ranks.keys()],
-                [state.weight for state in ranks.keys()],
-                [earliest_dates[state]
-                 for state in ranks.keys()],
-                [latest_dates[state]
-                 for state in ranks.keys()],
-                [float_dates[state] for state in ranks.keys()],
-                [free_float_dates[state] for state in ranks.keys()],
-            ]
-            index = ["rank", "state", "weight", "earliest date", "latest date", "float", "free float"]
-            # put headers in first column
-            print(tabulate(table, tablefmt="fancy_grid", showindex=index))
-            # print the critical path and its weight
-            print("Critical path : ", end=" ")
-            print(*mygraph.get_critical_path(), sep=" -> ")
-            print("Critical path weight : ", sum(
-                [state.weight for state in mygraph.get_critical_path()]))
-            #! debug for testing
-            if sum([state.weight for state in mygraph.get_critical_path()]) != earliest_dates[mygraph.states[-1]]:
-                raise Exception("Critical path weight is not equal to the earliest date of the last state")
+            # Ask the user to chose the method
+            # Nord-West corner method
+            # North-West corner method + optimization
+            # Balas-Hammer method
+            # Balas-Hammer method + optimization
 
-            # ask if the user wants to compute each possible critical path
-            compute = inquirer.confirm(
-                message="Do you want to compute each possible critical path ? (this may take some time for large graphs)", raise_keyboard_interrupt=False, mandatory=False).execute()
-            if compute:
-                for critical in mygraph.get_critial_paths():
-                    print(" -", end=" ")
-                    print(*critical, sep=" -> ")
+            method = inquirer.select(
+                message="Which method would you like to use ?",
+                choices=[
+                    "Nord-West corner method",
+                    "Nord-West corner method + optimization",
+                    "Balas-Hammer method",
+                    "Balas-Hammer method + optimization",
+                ],
+                raise_keyboard_interrupt=False,
+                border=True,
+            ).execute()
 
-            # ask if the user wants to display the graph
-            display = inquirer.confirm(
+            match method:
+                case "Nord-West corner method":
+                    table.NorthWestCorner()
+                case "Nord-West corner method + optimization":
+                    table.NordWestOptimized()
+                case "Balas-Hammer method":
+                    table.BalasHammer()
+                case "Balas-Hammer method + optimization":
+                    table.BalasHammerOptimized()
+
+            # Display the result
+            print("Result :")
+            table.show(table.transportation_table)
+            # Display the marginal costs
+            print("Marginal costs :")
+            matrix, (s, t) = table.marginal_costs_force()
+            table.show(matrix, s, t, "Potential", "Potential")
+            # print the total cost
+            print("Total cost : ", table.total_cost())
+
+            # Ask the user if he wants to display the graph
+            display_graph = inquirer.confirm(
                 message="Do you want to display the graph ?", raise_keyboard_interrupt=False, mandatory=False).execute()
-            if display:
-                calander.display(compute)
+            if display_graph:
+                table.graph.display(weights=table.transportation_table)
 
         # ask if the user wants to continue
         continue_ = inquirer.confirm(

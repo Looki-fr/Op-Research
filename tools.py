@@ -1,13 +1,11 @@
-from hmac import new
 from io import TextIOWrapper
-from matplotlib.image import resample
 from tabulate import tabulate
 from typing import Union
-from logger import print
+from logger import print, vprint
 from numpy import linalg
 import graphviz as gv
 import string
-from random import Random, shuffle
+from random import Random
 import time
 from timer import Timer
 import networkx as nx
@@ -15,8 +13,9 @@ from networkx.classes import Graph as nxGraph
 from networkx.algorithms import cycles
 from networkx.exception import NetworkXNoCycle
 
-
 # define for typing
+
+
 class Edge(tuple):
     def __init__(self) -> tuple[int, int]:
         super().__init__()
@@ -215,6 +214,24 @@ class TransportationTable:
                 potentials[(i, j)] = s[i] - t[j]
         return potentials
 
+    def marginal_costs_force(self) -> tuple[Matrix, tuple[int, int]]:
+        graph_copy = self.graph.copy()
+        if self.graph.is_degenerate():
+            if cycle := self.graph.has_cycle():
+                cycle = list(map(untranslate, cycle))
+                self.stepping_stone(cycle)
+            else:
+                # add the missing edges until the graph is connected
+                edges = self._get_missing_indexes()
+                self.graph.add_edges_from(map(translate, edges))
+        s, t = self.potentials()
+        potentials = Matrix(self.costs.rows_size, self.costs.cols_size)
+        for i in range(self.costs.rows_size):
+            for j in range(self.costs.cols_size):
+                potentials[(i, j)] = s[i] - t[j]
+        self._graph = graph_copy
+        return self.costs - potentials, (s, t)
+
     @staticmethod
     def from_file(file: TextIOWrapper) -> 'TransportationTable':
         table = TransportationTable()
@@ -246,10 +263,10 @@ class TransportationTable:
             table.append(row + [self.supply[i]])
         # add the demand
         table.append(self.demand)
-        # headers
-        headers = [f"C_{char_map(i)}" for i in range(len(self.supply))] + ["Provitions"]
         # index
-        index = [f"S_{i + 1}" for i in range(len(self.demand))] + ["Orders"]
+        index = [f"C_{char_map(i)}" for i in range(len(self.supply))] + ["Provitions"]
+        # headers
+        headers = [f"S_{i + 1}" for i in range(len(self.demand))] + ["Orders"]
         return tabulate(table, tablefmt="fancy_grid", showindex=index, headers=headers)
 
     def __repr__(self) -> str:
@@ -258,7 +275,7 @@ class TransportationTable:
     def display(self) -> None:
         print(self)
 
-    def show(self, matrix: Matrix, rows: list = None, cols: list = None, row_name: str = "Provitions", col_name: str = "Orders") -> None:
+    def show(self, matrix: Matrix, rows: list = None, cols: list = None, row_name: str = "Provitions", col_name: str = "Orders", verbose=False) -> None:
         if rows is None:
             rows = self.supply
         if cols is None:
@@ -272,7 +289,10 @@ class TransportationTable:
         headers = [f"C_{char_map(i)}" for i in range(len(self.demand))] + [row_name]
         # index
         index = [f"S_{i + 1}" for i in range(len(self.supply))] + [col_name]
-        print(tabulate(table, tablefmt="fancy_grid", showindex=index, headers=headers))
+        if verbose:
+            vprint(tabulate(table, tablefmt="fancy_grid", showindex=index, headers=headers))
+        else:
+            print(tabulate(table, tablefmt="fancy_grid", showindex=index, headers=headers))
 
     @Timer.timeit_with_name("0_nw")
     def NorthWestCorner(self) -> None:
@@ -461,11 +481,11 @@ class TransportationTable:
         first = True
 
         while True:
+            vprint("Iteration", n := 1 if first else n + 1)
             # Step 1 : Randomize the seed to get a different result each iteration and avoid getting stuck in a loop
             self.seed = time.time()
 
             # Step 2 : Check if the graph has a cycle and remove it
-            # ? isn't mandatory to do at each iteration
             if self.graph.is_degenerate():
                 if cycle := self.graph.has_cycle():
                     cycle = list(map(untranslate, cycle))
@@ -541,24 +561,53 @@ class TransportationTable:
         self.optimize()
         Timer.time(t1, "t_bh")
 
+    def export(self, file: TextIOWrapper) -> None:
+        # export the transportation table to a file
+        file.write(f"{self.costs.rows_size} {self.costs.cols_size}\n")
+        for i, row in enumerate(self.costs.rows):
+            file.write(" ".join(map(str, row)) + f" {self.supply[i]}\n")
+        file.write(" ".join(map(str, self.demand)) + "\n")
+        file.close()
+
 
 class Graph(nxGraph):
     def __repr__(self) -> str:
         return f"Graph {id(self)}"
 
-    def display(self, cycle: list['Edge'] = []) -> None:
+    def display(self, cycle: list['Edge'] = [], weights: Matrix = None) -> None:
         """
         Display the graph using graphviz
         """
         graph = gv.Digraph()
-        for node in self.nodes():
-            graph.node(str(node))
+
+        # Add subgraphs for each line
+        with graph.subgraph() as s1:
+            s1.attr(rank='same')
+            for node in self.nodes():
+                if node.startswith('S_'):
+                    s1.node(str(node), constraint="true")
+
+        with graph.subgraph() as s2:
+            s2.attr(rank='same')
+            for node in self.nodes():
+                if node.startswith('C_'):
+                    suffix, index = node.split('_')
+                    name = f"{suffix}_{char_map(int(index) - 1)}"
+                    s2.node(name, constraint="true")
+
         for edge in self.edges():
             color = "black"
             state, next_state = edge
+            # correct the name of the nodes
+            if state.startswith('C_'):
+                state = f"C_{char_map(int(state[2:]) - 1)}"
+            if next_state.startswith('C_'):
+                next_state = f"C_{char_map(int(next_state[2:]) - 1)}"
             if edge in cycle or edge[::-1] in cycle:
                 color = "red"
-            graph.edge(str(state), str(next_state), arrowhead="none", color=color)
+            label = str(weights[untranslate(edge)]) if weights is not None else ""
+            graph.edge(str(state), str(next_state), label=label, arrowhead="none", color=color, constraint="true")
+
         graph.view(cleanup=True)
         input("Press a key...")
 
@@ -585,12 +634,16 @@ if __name__ == "__main__":
         print(f"Test {i}")
         with open(f"data/{i}.txt", "r") as f:
             table = TransportationTable.from_file(f)
-        table.BalasHammerOptimized()
+        print("Table :")
+        table.display()
+        table.BalasHammer()
+        table.optimize()
         table.show(table.transportation_table)
+        table.graph.display()
         costs_nordwest[i] = table.total_cost
 
     test_transportation_table(9)
-    print("total cost: ", costs_nordwest)
+    # print("total cost: ", costs_nordwest)
 
     # assert costs_nordwest == {1: 3000, 2: 2000, 3: 33000, 4: 12700, 5: 445, 6: 2880, 7: 16000, 8: 17600, 9: 5700, 10: 54000, 11: 279150, 12: 154400}
     # print("Nordwest algorithm is working")

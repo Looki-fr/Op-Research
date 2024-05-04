@@ -12,6 +12,25 @@ class Settings:
     debug: bool = False
 
 
+# Colors
+RED = "\033[1;31m"
+GREEN = "\033[1;32m"
+YELLOW = "\033[1;33m"
+BLUE = "\033[1;34m"
+MAGENTA = "\033[1;35m"
+CYAN = "\033[1;36m"
+WHITE = "\033[1;37m"
+BOLD = "\033[1m"
+UNDERLINE = "\033[4m"
+RESET = "\033[0m"
+
+
+def clear_color():
+    """Set colors to empty string."""
+    global RED, GREEN, YELLOW, BLUE, MAGENTA, CYAN, WHITE, BOLD, UNDERLINE, RESET
+    RED = GREEN = YELLOW = BLUE = MAGENTA = CYAN = WHITE = BOLD = UNDERLINE = RESET = ""
+
+
 def print(*args, **kwargs):
     """My custom print() function."""
     # Adding new arguments to the print function signature
@@ -35,9 +54,13 @@ def print(*args, **kwargs):
         return __builtin__.print(*args, **kwargs)
 
 
-def verbose_print(*args, **kwargs):
+def vprint(*args, **kwargs):
     """My custom verbose print() function."""
     if Settings.verbose:
-        return print(*args, **kwargs)
+        # add color to verbose print
+        print(BLUE, end="")
+        _ = print(*args, **kwargs)
+        print(RESET, end="")
+        return _
     else:
         return None

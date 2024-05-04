@@ -8,7 +8,7 @@ def generate_problem(n, m):
     matrix = Matrix(n, m)
     for i in range(n):
         for j in range(m):
-            matrix[(i, j)] = randint(1, 100)
+            matrix[(i, j)] = randint(1, 1000000)
     problem.costs = matrix
     temp = Matrix(n, m)
     for i in range(n):
@@ -22,11 +22,15 @@ def generate_problem(n, m):
 
 
 if __name__ == "__main__":
-    for i in range(100):
-        print(f"Test {i + 1}")
-        n = 10
-        problem = generate_problem(n, n)
-        problem.NordWestOptimized()
+    try:
+        for i in range(10):
+            print(f"Test {i + 1}")
+            n = 100
+            problem = generate_problem(n, n)
+            problem.NordWestOptimized()
+            problem.BalasHammerOptimized()
+    except KeyboardInterrupt:
+        pass
     print("Average times:\n - ", end="")
     print(*[f"{k}: {round(v * 1000, 3)} ms (" + str(len(Timer.timedict[k])) + ")" for k, v in Timer.average_times.items()], sep="\n - ")
     print("Worst times:\n - ", end="")
