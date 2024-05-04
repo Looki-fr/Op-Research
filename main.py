@@ -81,11 +81,6 @@ if __name__ == '__main__':
             table.display()
 
             # Ask the user to chose the method
-            # Nord-West corner method
-            # North-West corner method + optimization
-            # Balas-Hammer method
-            # Balas-Hammer method + optimization
-
             method = inquirer.select(
                 message="Which method would you like to use ?",
                 choices=[
@@ -116,7 +111,7 @@ if __name__ == '__main__':
             matrix, (s, t) = table.marginal_costs_force()
             table.show(matrix, s, t, "Potential", "Potential")
             # print the total cost
-            print("Total cost : ", table.total_cost())
+            print("Total cost : ", table.total_cost)
 
             # Ask the user if he wants to display the graph
             display_graph = inquirer.confirm(
