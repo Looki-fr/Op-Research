@@ -110,13 +110,13 @@ def poly_fit(x, y):
     plt.plot(x_reg, y_reg, label="Polynomial (fitted)", color="purple")
 
 
-exponential_fit(x, y)
-plt.scatter(*zip(*points.items()), label="North-West Corner")
+poly_fit(x, y)
+plt.scatter(*zip(*points.items()), label="Optimize (Balas-Hammer)")
 
 plt.xlabel("Problem size")
 plt.ylabel("Time (ms)")
 plt.legend()
-plt.title("North-West Corner Algorithm Performance")
+plt.title("Optimisation Algorithm Performance (Balas-Hammer)")
 plt.tight_layout()
 
 plt.show()
