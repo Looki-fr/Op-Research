@@ -1,3 +1,4 @@
+from pyparsing import C
 from tools import *
 from random import randint
 from timer import Timer
@@ -29,7 +30,6 @@ if __name__ == "__main__":
         for _ in range(100):
             problem = generate_problem(n, n)
             problem.NordWestOptimized()
-            problem.BalasHammerOptimized()
 
     times: dict[dict[str:list]] = {}
     index = [10, 40, 100]
