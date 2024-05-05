@@ -3,21 +3,15 @@ import numpy as np
 from scipy.optimize import curve_fit
 
 points = {
-    10: 3.111,
-    40: 57.309,
-    100: 254.753,
-    400: 10365.372
+    10: 150.902,
+    40: 5288.096,
+    100: 56244.751,
+    400: 1297231.005
 }
 
 
 # generate log points for points
 x = np.linspace(10, 400, 1000)
-log = np.log(x)
-exp = np.exp(x)
-quad = x ** 2
-# plt.plot(x, log, label="log(x)")
-# plt.plot(x, exp, label="exp(x)")
-# plt.plot(x, quad, label="x^2")
 
 # Extracting x and y values from points dictionary
 x = np.array(list(points.keys()))
@@ -81,6 +75,22 @@ def log_fit(x, y):
     plt.plot(x_reg, y_reg, label="Logarithmic Regression")
 
 
+def nlogn_fit(x, y):
+    # Define the nlogn function
+    def nlogn_func(x, a, b):
+        return a * x * np.log(b * x)
+
+    # Fitting the nlogn function
+    popt, pcov = curve_fit(nlogn_func, x, y)
+
+    # Generating points for the regression line
+    x_reg = np.linspace(10, 400, 1000)
+    y_reg = nlogn_func(x_reg, *popt)
+
+    # Plotting the regression line
+    plt.plot(x_reg, y_reg, label="nlogn Regression")
+
+
 def poly_fit(x, y):
     # Fitting a polynomial regression line
     coefficients = np.polyfit(x, y, 3)
@@ -94,14 +104,13 @@ def poly_fit(x, y):
     plt.plot(x_reg, y_reg, label="Polynomial (fitted)", color="purple")
 
 
-quadratic_fit(x, y)
 poly_fit(x, y)
-plt.scatter(*zip(*points.items()), label="Balas-Hammer")
+plt.scatter(*zip(*points.items()), label="Optimize (North-West Corner)")
 
 plt.xlabel("Problem size")
 plt.ylabel("Time (ms)")
 plt.legend()
-plt.title("Balas-Hammer Algorithm Performance")
+plt.title("Optimisation Algorithm Performance (North-West Corner)")
 plt.tight_layout()
 
 plt.show()
