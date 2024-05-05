@@ -489,6 +489,8 @@ class TransportationTable:
         # check if there is a cycle in the actual proposition
         first = True
 
+        vprint(Settings.UNDERLINE + "Optimization with the stepping stone method" + Settings.RESET)
+
         while True:
             vprint(Settings.UNDERLINE + "Iteration", str(n := 1 if first else n + 1) + Settings.RESET)
             # Step 1 : Randomize the seed to get a different result each iteration and avoid getting stuck in a loop
@@ -509,8 +511,9 @@ class TransportationTable:
                     vprint("Added edges : ", *edges)
             # Step 3 : Compute the marginal costs
             marginal_costs = self.marginal_costs
-            vprint("Marginal costs :")
-            self.show(marginal_costs, verbose=True)
+            if Settings.verbose:  # ? adding condition to avoid computing potential costs if not needed
+                vprint("Marginal costs :")
+                self.show(marginal_costs, *self.potentials(), "Potential", "Potential")
             min_mcost = min(marginal_costs)
             vprint(f"Minimum marginal cost : {min_mcost}")
             # Step 4 : Check if the table is optimized or not with the minimum marginal cost
