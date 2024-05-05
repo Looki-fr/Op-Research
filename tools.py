@@ -659,7 +659,7 @@ if __name__ == "__main__":
     def test_transportation_table(i):
         with open(f"data/{i}.txt", "r") as f:
             table = TransportationTable.from_file(f)
-        Settings.outfile = f"test_{i}.txt"
+        Settings.outfile = f"INT13_trace{i}-nw.txt"
         print(f"Test {i}")
         print("Costs :")
         table.display()
@@ -668,7 +668,10 @@ if __name__ == "__main__":
         print("Transportation table with Balas-Hammer method")
         table.show(table.transportation_table)
         print("Total cost : ", table.total_cost)
-        print("\n\n")
+        Settings.outfile = f"INT13_trace{i}-bh.txt"
+        print(f"Test {i}")
+        print("Costs :")
+        table.display()
         table.NordWestOptimized()
         costs_nordwest[i] = table.total_cost
         print("Transportation table with Nord-West corner method")
