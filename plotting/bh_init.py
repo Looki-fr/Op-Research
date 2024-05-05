@@ -6,6 +6,7 @@ points = {
     10: 3.111,
     40: 57.309,
     100: 254.753,
+    200: 1439.482,
     400: 10365.372
 }
 
@@ -94,7 +95,6 @@ def poly_fit(x, y):
     plt.plot(x_reg, y_reg, label="Polynomial (fitted)", color="purple")
 
 
-quadratic_fit(x, y)
 poly_fit(x, y)
 plt.scatter(*zip(*points.items()), label="Balas-Hammer")
 
