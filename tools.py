@@ -395,23 +395,23 @@ class TransportationTable:
 
     @Timer.timeit_with_name("0_bh")
     def BalasHammer(self) -> None:
-        vprint(Settings.UNDERLINE + "Balas-Hammer method" + Settings.RESET)
+        # vprint(Settings.UNDERLINE + "Balas-Hammer method" + Settings.RESET)
         supply = self.supply.copy()
         demand = self.demand.copy()
         costs = self.costs.copy().matrix
         allocations = Matrix(self.costs.rows_size, self.costs.cols_size)
         while sum(supply) > 0 and sum(demand) > 0:
             penalties = self.penalties(supply, demand, costs)
-            vprint("Penalties :")
-            vprint(*penalties, sep='\n')
+            # vprint("Penalties :")
+            # vprint(*penalties, sep='\n')
             edge = self.choose_edge_to_fill(penalties, costs, allocations, supply, demand)
-            vprint("Edge to fill : ", edge)
+            # vprint("Edge to fill : ", edge)
             if edge is None:
-                vprint("No edge to fill")
-                vprint("End of the Balas-Hammer method")
+                # vprint("No edge to fill")
+                # vprint("End of the Balas-Hammer method")
                 break
             self.fill_edge(allocations, edge, supply, demand, costs)
-            vprint("Updated transportation table :")
+            # vprint("Updated transportation table :")
             self.show(allocations, verbose=True)
         self.transportation_table = allocations
 
