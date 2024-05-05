@@ -7,7 +7,10 @@ points = {
     40: 57.309,
     100: 254.753,
     200: 1439.482,
-    400: 10365.372
+    400: 10365.372,
+    # 1000: 147521.924,
+    1000: 153088.374,
+    4000: 11331082.928
 }
 
 
@@ -40,10 +43,11 @@ def linear_fit(x, y):
 def quadratic_fit(x, y):
     # Fitting a quadratic regression line
     coefficients = np.polyfit(x, y, 2)
+    print(coefficients)
     poly = np.poly1d(coefficients)
 
     # Generating points for the regression line
-    x_reg = np.linspace(10, 400, 1000)
+    x_reg = np.linspace(x[0], x[-1], 1000)
     y_reg = poly(x_reg)
 
     # Plotting the regression line
@@ -59,7 +63,7 @@ def exponential_fit(x, y):
     popt, pcov = curve_fit(exponential_func, x, y)
 
     # Generating points for the regression line
-    x_reg = np.linspace(10, 400, 1000)
+    x_reg = np.linspace(x[0], x[-1], 1000)
     y_reg = exponential_func(x_reg, *popt)
 
     # Plotting the regression line
@@ -75,7 +79,7 @@ def log_fit(x, y):
     popt, pcov = curve_fit(log_func, x, y)
 
     # Generating points for the regression line
-    x_reg = np.linspace(10, 400, 1000)
+    x_reg = np.linspace(x[0], x[-1], 1000)
     y_reg = log_func(x_reg, *popt)
 
     # Plotting the regression line
@@ -85,16 +89,20 @@ def log_fit(x, y):
 def poly_fit(x, y):
     # Fitting a polynomial regression line
     coefficients = np.polyfit(x, y, 3)
+    print(coefficients)
     poly = np.poly1d(coefficients)
 
+    print(poly(4000))
+
     # Generating points for the regression line
-    x_reg = np.linspace(10, 400, 1000)
+    x_reg = np.linspace(x[0], x[-1], 1000)
     y_reg = poly(x_reg)
 
     # Plotting the regression line
     plt.plot(x_reg, y_reg, label="Polynomial (fitted)", color="purple")
 
 
+quadratic_fit(x, y)
 poly_fit(x, y)
 plt.scatter(*zip(*points.items()), label="Balas-Hammer")
 

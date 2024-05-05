@@ -16,7 +16,7 @@ if __name__ == '__main__':
     tprint("Settings", chr_ignore=True)
     promt = inquirer.checkbox(
         message="Select the settings",
-        choices=["Save trace to a file", "Verbose mode"],
+        choices=["Save trace to a file", "Display all computation steps"],
         raise_keyboard_interrupt=False,
         mandatory=False,
         border=True,

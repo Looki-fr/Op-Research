@@ -43,7 +43,7 @@ def quadratic_fit(x, y):
     poly = np.poly1d(coefficients)
 
     # Generating points for the regression line
-    x_reg = np.linspace(10, 400, 1000)
+    x_reg = np.linspace(x[0], x[-1], 1000)
     y_reg = poly(x_reg)
 
     # Plotting the regression line
@@ -59,7 +59,7 @@ def exponential_fit(x, y):
     popt, pcov = curve_fit(exponential_func, x, y)
 
     # Generating points for the regression line
-    x_reg = np.linspace(10, 400, 1000)
+    x_reg = np.linspace(x[0], x[-1], 1000)
     y_reg = exponential_func(x_reg, *popt)
 
     # Plotting the regression line
@@ -75,7 +75,7 @@ def log_fit(x, y):
     popt, pcov = curve_fit(log_func, x, y)
 
     # Generating points for the regression line
-    x_reg = np.linspace(10, 400, 1000)
+    x_reg = np.linspace(x[0], x[-1], 1000)
     y_reg = log_func(x_reg, *popt)
 
     # Plotting the regression line
@@ -91,7 +91,7 @@ def nlogn_fit(x, y):
     popt, pcov = curve_fit(nlogn_func, x, y)
 
     # Generating points for the regression line
-    x_reg = np.linspace(10, 400, 1000)
+    x_reg = np.linspace(x[0], x[-1], 1000)
     y_reg = nlogn_func(x_reg, *popt)
 
     # Plotting the regression line
@@ -104,7 +104,7 @@ def poly_fit(x, y):
     poly = np.poly1d(coefficients)
 
     # Generating points for the regression line
-    x_reg = np.linspace(10, 400, 1000)
+    x_reg = np.linspace(x[0], x[-1], 1000)
     y_reg = poly(x_reg)
 
     # Plotting the regression line

@@ -513,7 +513,7 @@ class TransportationTable:
             marginal_costs = self.marginal_costs
             if Settings.verbose:  # ? adding condition to avoid computing potential costs if not needed
                 vprint("Marginal costs :")
-                self.show(marginal_costs, *self.potentials(), "Potential", "Potential")
+                self.show(marginal_costs, *self.potentials(), "Potential", "Potential", verbose=True)
             min_mcost = min(marginal_costs)
             vprint(f"Minimum marginal cost : {min_mcost}")
             # Step 4 : Check if the table is optimized or not with the minimum marginal cost
