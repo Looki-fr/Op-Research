@@ -529,7 +529,7 @@ class TransportationTable:
             vprint(f"Added edge : {edge}")
             # find the added cycle
             cycle: list[Edge] = self.graph.get_cycle(edge)
-            cycle = list(map(untranslate, cycle))
+            cycle: list[tuple[int:int]] = list(map(untranslate, cycle))
             vprint("Cycle : ", end='')
             vprint(*cycle, sep=' -> ')
             # optimize the table
